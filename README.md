@@ -1,6 +1,6 @@
 # D2PC
 
-This repository includes code implementing D2PC, Carousel, OCC-Store(OCC+2PC), and 2PL-Store(2PC+2PC). Both approaches support geo-distributed transaction processing.
+This repository includes code implementing of D2PC, Carousel, OCC-Store(OCC+2PC), and 2PL-Store(2PC+2PC). Both approaches support geo-distributed transaction processing.
 
 The code is based on TAPIR, the SOSP 2015 paper, ["Building Consistent Transactions with
 Inconsistent Replication."](http://dl.acm.org/authorize?N93281).
@@ -13,8 +13,6 @@ The repo is structured as follows:
   delays and reorderings.
 
 - /replication - replication library for the distributed stores
-  - /vr - implementation of viewstamped replication protocol
-  - /ir - implementation of inconsistent replication protocol
   - /lr - implementation of leader based replication protocol
   - /commit - implementation of co-coordinators
 
