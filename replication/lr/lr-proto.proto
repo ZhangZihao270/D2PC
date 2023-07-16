@@ -1,0 +1,185 @@
+syntax = "proto3";
+
+// import "replication/commit/commit-proto.proto";
+
+package replication.lr.proto;
+
+message LogID{
+    uint64 logindex = 1;
+}
+
+enum LogEntryState{
+    LOG_STATE_COMMIT = 0;
+    LOG_STATE_ABORT = 1;
+    LOG_STATE_APPLY = 2;
+    LOG_STATE_PREPAREOK = 3;
+    LOG_STATE_UNDECIDE = 4;
+}
+
+enum TxnType{
+    RW_TXN = 0;
+    RO_TXN = 1;
+}
+
+enum CommitMode{
+    MODE_SLOW = 0;
+    MODE_FAST = 1;
+    MODE_PARALLEL = 2;
+    MODE_CAROUSEL = 3;
+    MODE_RC = 4;
+}
+
+enum ReplyState {
+    REP_OK = 0;
+    REP_FAIL = 1;
+    REP_TIMEOUT = 2;
+    REP_NETWORK_FAILURE = 3;
+}
+
+message WriteSet{
+    bytes key = 1;
+    bytes value = 2;
+}
+
+message ReadSet{
+    bytes key = 1;
+    uint64 replica = 2;
+    uint64 readts = 3;
+}
+
+message LogEntryProto{
+    repeated WriteSet wset = 1;
+    LogEntryState state = 2;
+    uint64 timestamp = 3;
+    uint64 term = 4;
+    // uint32 replicaID = 5;
+    uint64 lsn = 6;
+    uint64 txnid = 7;
+}
+
+message ReplicaLogProto{
+    repeated LogEntryProto entry = 1;
+}
+
+//leader -> replica
+message ReplicateTransaction{
+    LogEntryProto txnLog = 1;
+    uint64 commitIndex = 2;
+    uint64 term = 3;
+    int32 replicaID = 4;
+    uint64 primaryCoordinator = 5;
+    repeated uint64 participants = 6;
+    uint64 primaryShard = 7;
+    LogEntryState vote = 8;
+}
+
+message ReplicateTransactionReply{
+    // bool success = 1;
+    uint64 lsn = 1;
+    uint64 term = 2;
+    int32 replicaID = 3;
+    uint64 txnid = 4;
+}
+
+// leader -> replica
+message ReplicateCommit{
+    uint64 tid = 1;
+    uint64 lsn = 2;
+    LogEntryState state = 3;
+    uint64 timestamp = 4;
+}
+
+message ReplicateCommitReply{
+    uint64 tid = 1;
+    ReplyState state = 2;
+}
+
+// fast mode
+// coordinator/client -> participant leader 
+message PrepareTransaction{
+    uint64 tid = 1;
+    repeated WriteSet wset = 2;
+    repeated ReadSet rset = 3;
+    repeated uint64 participants = 4;
+    uint64 primaryShard = 5;
+    CommitMode mode = 6;
+    // uint64 coordinatorShard = 4;
+    // uint64 coordinatorID = 5;
+}
+
+message PrepareTransactionReply{
+    uint64 tid = 1;
+    LogEntryState state = 2;
+    uint64 shard = 3;
+    uint64 timestamp = 4;
+    int32 reachFaultTolerance = 5;
+    uint64 replica = 6;
+}
+
+// slow mode
+// client -> primary shard
+message Prepare{
+    uint64 tid = 1;
+    repeated WriteSet wset = 2;
+    repeated ReadSet rset = 3;
+    repeated uint64 participants = 4;
+}
+
+message PrepareReply{
+    uint64 tid = 1;
+    LogEntryState state = 2;
+    uint64 timestamp = 3;
+}
+
+// parallel mode
+// client -> closestreplica
+message ParallelModeCommit{
+    uint64 tid = 1;
+    repeated uint64 participants = 2;
+}
+
+message ParallelModeCommitReply{
+    uint64 tid = 1;
+    LogEntryState state = 2;
+    uint64 timestamp = 3;
+}
+
+// coordinator -> participant leader
+message Commit{
+    uint64 tid = 1;
+    LogEntryState state = 2;
+    uint64 timestamp = 3;
+}
+
+// client -> replica
+message GetData{
+    uint64 tid = 1;
+    repeated bytes keys = 2;
+}
+
+message ReadKeyVersion{
+    bytes key = 1;
+    bytes value = 2;
+    uint64 timestamp = 3;
+}
+
+message GetDataReply{
+    uint64 tid = 1;
+    repeated ReadKeyVersion keys = 2;
+    uint64 replicaid = 3;
+    ReplyState state = 4;
+}
+
+
+// for read only transaction 
+// client -> participant leader
+message ReadOnly{
+    uint64 tid = 1;
+    repeated bytes keys = 2;
+    uint64 timestamp = 3;
+}
+
+// for RC mode
+message RCPrepare{
+    
+}
