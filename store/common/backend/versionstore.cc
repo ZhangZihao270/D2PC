@@ -136,15 +136,16 @@ VersionedKVStore::commitGet(const string &key, const Timestamp &readTime, const 
 }
 
 /*
- * Precommit a transaction, precommit means end transaction critical path early.
+ * Precommit a transaction, precommit means end concurrency control early.
 * add tid to key's precommit
 */
 // 
 void 
-VersionedKVStore::preCommit(const std::string &key, const uint64_t tid){
+VersionedKVStore::preCommit(const std::string &key, uint64_t tid){
     // check for existence of key in store
     if (inStore(key)) {
         // Debug("Find the key.");
+        Debug("put into key %s", key);
         precommits[key].push_back(tid);
     }
 }
@@ -152,8 +153,8 @@ VersionedKVStore::preCommit(const std::string &key, const uint64_t tid){
 /*
  * Commit a transaction, remove tid from key's precommit
 */
-void 
-VersionedKVStore::commit(const std::string &key, const uint64_t tid){
+uint64_t 
+VersionedKVStore::commit(const std::string &key, uint64_t tid){
     if (inStore(key)) {
         // Debug("Find the key.");
         std::vector<uint64_t>::iterator it;
@@ -165,12 +166,20 @@ VersionedKVStore::commit(const std::string &key, const uint64_t tid){
                     Debug("Find the precommit txn");
                     it = precommits[key].erase(it);
                     Debug("Earse it");
+                    
                 } else {
                     ++it;
                 }
             }
         }
+
+        if(!blocked[key].empty()){
+            uint64_t next = blocked[key].front();
+            blocked[key].erase(blocked[key].begin());
+            return next;
+        }
     }
+    return 0;
 }
 
 bool
@@ -206,5 +215,18 @@ VersionedKVStore::getLastRead(const string &key, const Timestamp &t, Timestamp &
         }
     }
     return false;	
+}
+
+
+// check if has precommit txn on the operate key
+bool
+VersionedKVStore::hasPreCommit(const string &key, uint64_t tid){
+    if(precommits[key].empty())
+        return false;
+    else{
+        blocked[key].push_back(tid);
+        Debug("Blocked by %lu", precommits[key][0]);
+        return true;
+    }
 }
 

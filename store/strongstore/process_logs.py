@@ -12,10 +12,6 @@ fLatency = []
 tExtra = 0.0
 sExtra = 0.0
 fExtra = 0.0
-retries = 0.0
-starvation = 0.0
-readretries = 0.0
-readstarvation = 0.0
 
 xLatency = []
 
@@ -41,13 +37,6 @@ for line in open(sys.argv[1]):
 
   latency = int(line[3])
   status = int(line[4])
-  ttype = int(line[5])
-  retry = int(line[6])
-  if retry == 5:
-    starvation += 1
-  if ttype == 4 and retry == 5:
-    readstarvation += 1
-  retries += retry
   ttype = -1
   try:
     ttype = int(line[5])
@@ -87,10 +76,6 @@ print(tLatency[(int)((len(tLatency) * 99)/100)])
 print(sum(sLatency)/float(len(sLatency)))
 print(sLatency[(int)(len(sLatency)/2)])
 print(sLatency[(int)((len(sLatency) * 99)/100)])
-print(retries/len(tLatency))
-print(retries)
-print(starvation)
-print(readstarvation)
 print(tExtra)
 print(sExtra)
 if len(xLatency) > 0:

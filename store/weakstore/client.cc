@@ -70,6 +70,12 @@ Client::Get(const string &key, string &value)
     return promise.GetReply();
 }
 
+int
+Client::MultiGet(const vector<string> &key, string &value)
+{
+    return 0;
+}
+
 /* Sets the value corresponding to the supplied key. */
 int
 Client::Put(const string &key,

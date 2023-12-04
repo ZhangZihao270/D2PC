@@ -30,6 +30,8 @@ Client::Client(Mode mode, TpcMode tpcMode, string configPath, int nShards,
         string shardConfigPath = configPath + to_string(i) + ".config";
         ShardClient *shardclient = new ShardClient(mode, tpcMode, shardConfigPath,
             &transport, client_id, i, closestReplica);
+        // ShardClient *shardclient = new ShardClient(mode, tpcMode, shardConfigPath,
+        //     &transport, client_id, i, i);
         bclient[i] = new BufferClient(shardclient);
     }
 
@@ -76,6 +78,7 @@ Client::Begin()
     for (int i = 0; i < nshards; i++) {
         bclient[i]->Begin(t_id);
     }
+    v.clear();
 }
 
 /* Returns the value corresponding to the supplied key. */
@@ -101,6 +104,46 @@ Client::Get(const string &key, string &value)
     value = promise.GetValue();
     
     Debug("Get %s of txn %lu, state %d", key.c_str(), promise.GetTid(), promise.GetReply());
+
+    return promise.GetReply();
+}
+
+/* Returns the value corresponding to the supplied key. */
+int 
+Client::MultiGet(const std::vector<std::string> &keys, std::string &value)
+{
+    vector<vector<string>> key_shards(nshards, vector<string>());
+    // Contact the appropriate shard to get the value.
+    for(string k : keys){
+        int i = key_to_shard(k, nshards);
+        key_shards[i].push_back(k);
+
+        if(std::find(participants.begin(), participants.end(), i) == participants.end()){
+            participants.push_back(i);
+        }
+    }
+
+    // If needed, add this shard to set of participants and send BEGIN.
+    // if (participants.find(i) == participants.end()) {
+    //     participants.insert(i);
+    // }
+
+    Promise promise(GET_TIMEOUT);
+
+    for(int i = 0; i < nshards; i++){
+    // Send the GET operation to appropriate shard.
+        if(!key_shards[i].empty()){
+            promise.Reset();
+            bclient[i]->MultiGet(key_shards[i], &promise);
+            Debug("[Shardd %d] read reply status %d", i, promise.GetReply());
+            if(promise.GetReply() == 1)
+                return promise.GetReply();
+
+            value = promise.GetValue();
+        
+            // Debug("Get %s of txn %lu, state %d", key.c_str(), promise.GetTid(), promise.GetReply());
+        }
+    }
 
     return promise.GetReply();
 }
@@ -213,13 +256,16 @@ Client::Commit()
     // Implementing 2 Phase Commit
     uint64_t ts = 0;
     int status;
+    int retry_num = 0;
 
-    for (int i = 0; i < COMMIT_RETRIES; i++) {
+    for (; retry_num < COMMIT_RETRIES; retry_num++) {
         status = Prepare(ts);
-        if (status == REPLY_OK || status == REPLY_FAIL) {
+        Debug("Status: %d", status);
+        if (status == REPLY_OK) {
             break;
         }
     }
+    Debug("retry times: %d", retry_num);
 
     if (status == REPLY_OK) {
         // For Spanner like systems, calculate timestamp.
@@ -264,11 +310,14 @@ Client::Commit()
             // Debug("Sending commit to shard [%d]", p);
             bclient[p]->Commit(ts);
         }
+        v.push_back(retry_num);
         return true;
     }
 
     // 4. If not, send abort to all shards.
     Abort();
+    v.push_back(retry_num);
+    Debug("retry num: %d", v[0]);
     return false;
 }
 
@@ -286,7 +335,7 @@ Client::Abort()
 vector<int>
 Client::Stats()
 {
-    vector<int> v;
+    // vector<int> v;
     return v;
 }
 

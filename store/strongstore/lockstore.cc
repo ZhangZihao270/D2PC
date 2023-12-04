@@ -30,6 +30,7 @@ LockStore::Get(uint64_t id, const string &key, pair<Timestamp, string> &value)
 
     // grab the lock (ok, if we already have it)
     if (locks.lockForRead(key, id)) {
+        Debug("acquire read lock");
         // value = make_pair(Timestamp(), val);
         return REPLY_OK;
     } else {
@@ -104,7 +105,7 @@ LockStore::Prepare(uint64_t id, const Transaction &txn, bool do_check)
     }
 }
 
-void
+std::vector<uint64_t>
 LockStore::Commit(uint64_t id, uint64_t timestamp)
 {
     Debug("[%lu] COMMIT", id);
@@ -112,6 +113,9 @@ LockStore::Commit(uint64_t id, uint64_t timestamp)
 
 
     Transaction txn = prepared[id];
+
+    std::vector<uint64_t> nexts;
+
 
     for (auto &write : txn.getWriteSet()) {
         store.put(write.first, write.second, timestamp);
@@ -121,6 +125,8 @@ LockStore::Commit(uint64_t id, uint64_t timestamp)
     // dropLocks(id, txn);
 
     prepared.erase(id);
+
+    return nexts;
 }
 
 // for parallel mode, to release locks and adds tid to each write key's precommit list
@@ -139,10 +145,12 @@ LockStore::PreCommit(uint64_t id){
     dropLocks(id, txn);
 }
 
-void
+std::vector<uint64_t>
 LockStore::Abort(uint64_t id, const Transaction &txn)
 {
     Debug("[%lu] ABORT", id);
+
+    std::vector<uint64_t> nexts;
 
     for (auto &write : txn.getWriteSet()) {
         store.commit(write.first, id);
@@ -150,6 +158,8 @@ LockStore::Abort(uint64_t id, const Transaction &txn)
 
     dropLocks(id, txn);
     prepared.erase(id);
+
+    return nexts;
 }
 
 void

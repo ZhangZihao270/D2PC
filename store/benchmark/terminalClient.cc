@@ -9,8 +9,8 @@
 #include "store/common/truetime.h"
 #include "store/common/frontend/client.h"
 #include "store/strongstore/client.h"
-#include "store/weakstore/client.h"
-#include "store/tapirstore/client.h"
+// #include "store/weakstore/client.h"
+// #include "store/tapirstore/client.h"
 
 using namespace std;
 
@@ -128,13 +128,14 @@ main(int argc, char **argv)
         }
     }
 
-    if (mode == MODE_TAPIR) {
-        client = new tapirstore::Client(configPath, nShards,
-                    closestReplica, TrueTime(0, 0));
-    } else if (mode == MODE_WEAK) {
-        client = new weakstore::Client(configPath, nShards,
-                    closestReplica);
-    } else if (mode == MODE_STRONG) {
+    // if (mode == MODE_TAPIR) {
+    //     client = new tapirstore::Client(configPath, nShards,
+    //                 closestReplica, TrueTime(0, 0));
+    // } else if (mode == MODE_WEAK) {
+    //     client = new weakstore::Client(configPath, nShards,
+    //                 closestReplica);
+    // } else 
+    if (mode == MODE_STRONG) {
         client = new strongstore::Client(strongmode, tpcMode, configPath,
                     nShards, closestReplica, nReplicas, TrueTime(0, 0));
     } else {

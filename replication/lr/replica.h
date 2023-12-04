@@ -85,10 +85,9 @@ public:
     void HandleReplicateResultFromCoordinatorReplica(const TransportAddress &remote,
                                                     const replication::commit::proto::NotifyReplicateResult &msg);
 
-    // TODO1 read函数里，如果OCC，则txn初始化一个start_ts，如果2PL，则加锁
     void HandleRead(const TransportAddress &remote,
                         const proto::GetData &msg);
-    // TODO1 同read
+
     void HandleReadAndPrepare();
 
     void PreCommit(const uint64_t tid);
@@ -106,12 +105,16 @@ private:
         std::vector<uint64_t> participants;
         uint64_t primary_shard;
 
-        // 是否需要设置continuation，可能也不需要，因为可能只有一个流程，复制日志成功后通知primary coordinator
         bool send_confirms = false;
         bool reach_consensus = false; 
         bool reach_commit_decision = false;
 
         bool parallel_mode = false;
+
+        bool is_participant = true;
+
+        // if has read uncommit updates, it cannot vote.
+        bool can_vote = false;
 
         inline PendingTransaction(
             std::unique_ptr<Timeout> timer,
@@ -174,7 +177,7 @@ private:
         return ++ last_transaction;
     }
 
-    void InvokeReplicateTxn(const LogEntry *entry);
+    void InvokeReplicateTxn(const LogEntry *entry, bool canvote);
     void ReplicateTxn(const PendingTransaction *req);
     void HandleConsensus(const uint64_t txn_id,
                         const std::map<int, proto::ReplicateTransactionReply> &msgs,
@@ -196,6 +199,8 @@ private:
     void ResendReplicateTxn(uint64_t tid);
     void ResendPrepareOK(uint64_t tid);
     void ResendPrepare(uint64_t tid);
+
+    void VoteForNext(std::vector<uint64_t> nexts);
 
     // Sharding logic: Given key, generates a number b/w 0 to nshards-1
     uint64_t key_to_shard(const std::string &key) {

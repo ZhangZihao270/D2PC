@@ -77,6 +77,8 @@ OCCStore::Prepare(uint64_t id, const Transaction &txn, bool do_check)
         return REPLY_OK;
     }
 
+    bool hasDependency = false;
+
     if(do_check){
         // Do OCC checks.
         set<string> pWrites = getPreparedWrites();
@@ -125,25 +127,54 @@ OCCStore::Prepare(uint64_t id, const Transaction &txn, bool do_check)
     // Otherwise, prepare this transaction for commit
     prepared[id] = txn;
     Debug("[%lu] PREPARED TO COMMIT", id);
-    return REPLY_OK;
+
+    for (auto &read : txn.getReadSet()) {
+        if(store.hasPreCommit(read.first.c_str(), id))
+            hasDependency = true;
+    }
+
+    for (auto &write : txn.getWriteSet()) {
+        if(store.hasPreCommit(write.first.c_str(), id))
+            hasDependency = true;
+    }
+
+
+    if(hasDependency){
+        Debug("Txn %lu is blocked", id);
+        return REPLY_HAS_PRECOMMIT;
+    } else{ 
+        Debug("Txn %lu can commit", id);
+        return REPLY_OK;
+    }
 }
 
-void
+std::vector<uint64_t>
 OCCStore::Commit(uint64_t id, uint64_t timestamp)
 {
     Debug("[%lu] COMMIT", id);
-    ASSERT(prepared.find(id) != prepared.end());
+    ASSERT(precommitted.find(id) != precommitted.end());
 
-    Transaction txn = prepared[id];
+    Transaction txn = precommitted[id];
+
+    std::vector<uint64_t> nexts;
+
+    Debug("[%lu] Writeset Size: %d", id, txn.getWriteSet().size());
 
     for (auto &write : txn.getWriteSet()) {
         store.put(write.first, // key
                     write.second, // value
                     Timestamp(timestamp)); // timestamp
-        store.commit(write.first, id);
+        uint64_t next_txn = store.commit(write.first, id);
+        if(next_txn > 0)
+            nexts.push_back(next_txn); 
     }
 
-    // prepared.erase(id);
+    if(precommitted.find(id)!=prepared.end())
+        precommitted.erase(id);
+    
+    Debug("Commit, Precommitted size: %d", precommitted.size());
+
+    return nexts;
 }
 
 // for parallel mode, to remove txn from validation list and adds tid to each write key's precommit list
@@ -154,23 +185,36 @@ OCCStore::PreCommit(uint64_t id){
 
     Transaction txn = prepared[id];
 
+    Debug("[%lu] Writeset Size: %d", id, txn.getWriteSet().size());
+
     for (auto &write : txn.getWriteSet()) {
         store.preCommit(write.first, id);
     }
 
     prepared.erase(id);
+    precommitted[id] = txn;
+
+    Debug("PreCommit, Prepared size: %d", prepared.size());
 }
 
-void
+std::vector<uint64_t>
 OCCStore::Abort(uint64_t id, const Transaction &txn)
 {
     Debug("[%lu] ABORT", id);
 
+    std::vector<uint64_t> nexts;
+
     for (auto &write : txn.getWriteSet()) {
-        store.commit(write.first, id);
+        uint64_t next_txn = store.commit(write.first, id);
+        if(next_txn > 0)
+            nexts.push_back(next_txn); 
     }
 
     prepared.erase(id);
+
+    Debug("Abort, Prepared size: %d", prepared.size());
+
+    return nexts;
 }
 
 void
@@ -184,6 +228,7 @@ OCCStore::getPreparedWrites()
 {
     // gather up the set of all writes that we are currently prepared for
     set<string> writes;
+    Debug("Prepared size: %d", prepared.size());
     for (auto &t : prepared) {
         for (auto &write : t.second.getWriteSet()) {
             writes.insert(write.first);
@@ -197,6 +242,7 @@ OCCStore::getPreparedReadWrites()
 {
     // gather up the set of all writes that we are currently prepared for
     set<string> readwrites;
+    Debug("Prepared size: %d", prepared.size());
     for (auto &t : prepared) {
         for (auto &write : t.second.getWriteSet()) {
             readwrites.insert(write.first);

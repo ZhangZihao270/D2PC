@@ -95,6 +95,44 @@ ShardClient::Get(uint64_t id, const std::string &key, Promise *promise)
 }
 
 void
+ShardClient::MultiGet(uint64_t id, const std::vector<string> &keys, Promise *promise)
+{
+    // Send the GET operation to appropriate shard.
+    Debug("[shard %i] Sending GET of %lu to replica %lu", shard, id, replica);
+    Debug("Promise txn id %lu", promise->GetTid());
+    // // create request
+    // string request_str;
+    // Request request;
+    // request.set_op(Request::GET);
+    // request.set_txnid(id);
+    // request.mutable_get()->set_key(key);
+    // request.SerializeToString(&request_str);
+
+    // set to 1 second by default
+    int timeout = (promise != NULL) ? promise->GetTimeout() : 1000;
+
+    // std::vector<std::string> keys;
+    // keys.push_back(key);
+
+    transport->Timer(0, [=]() {
+	    waiting = promise;    
+        client->InvokeGetData(id, 
+                            keys, 
+                            replica, 
+                            bind(&ShardClient::GetCallback,
+                                this,
+                                placeholders::_1,
+                                placeholders::_2,
+                                placeholders::_3),
+                            timeout,
+                            bind(&ShardClient::GetTimeout,
+                                this,
+                                placeholders::_1)
+        ); // timeout in ms
+    });
+}
+
+void
 ShardClient::Get(uint64_t id, const string &key,
                 const Timestamp &timestamp, Promise *promise)
 {

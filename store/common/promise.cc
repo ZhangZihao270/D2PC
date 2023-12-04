@@ -170,3 +170,7 @@ Promise::GetPrepareReply(){
         return REPLY_OK;
     }
 }
+
+void Promise::Reset(){
+    done = false;
+}

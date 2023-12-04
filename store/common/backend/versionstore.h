@@ -25,8 +25,9 @@ public:
     bool getLastRead(const std::string &key, const Timestamp &t, Timestamp &readTime);
     void put(const std::string &key, const std::string &value, const Timestamp &t);
     void commitGet(const std::string &key, const Timestamp &readTime, const Timestamp &commit);
-    void preCommit(const std::string &key, const uint64_t tid);
-    void commit(const std::string &key, const uint64_t tid);
+    void preCommit(const std::string &key, uint64_t tid);
+    uint64_t commit(const std::string &key, uint64_t tid);
+    bool hasPreCommit(const std::string &key, uint64_t tid);
 
 private:
     struct VersionedValue {
@@ -49,6 +50,7 @@ private:
     std::unordered_map< std::string, std::set<VersionedValue> > store;
     std::unordered_map< std::string, std::map< Timestamp, Timestamp > > lastReads;
     std::unordered_map< std::string, std::vector<uint64_t> > precommits;
+    std::unordered_map< std::string, std::vector<uint64_t> > blocked;
 
     bool inStore(const std::string &key);
     void getValue(const std::string &key, const Timestamp &t, std::set<VersionedValue>::iterator &it);

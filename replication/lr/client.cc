@@ -36,12 +36,15 @@ LRClient::ReceiveMessage(const TransportAddress &remote,
     proto::ParallelModeCommitReply parallelModeCommitReply;
 
     if(type == prepareTxnReply.GetTypeName()){
+        Debug("aaa111");
         prepareTxnReply.ParseFromString(data);
         HandlePrepareTxnReply(remote, prepareTxnReply);
     } else if (type == getDataReply.GetTypeName()){
+        Debug("bbb222");
         getDataReply.ParseFromString(data);
         HandleGetDataReply(remote, getDataReply); 
     } else if (type == parallelModeCommitReply.GetTypeName()){
+        Debug("ccc333");
         parallelModeCommitReply.ParseFromString(data);
         HandleParallelModeCommitReply(remote, parallelModeCommitReply);
     }
@@ -82,6 +85,8 @@ LRClient::SendPrepare(uint64_t leader, const PendingPrepare *req){
         wsetEntry->set_value(wp.second);
     }
 
+    Debug("11111");
+
     for(const std::pair<std::string, Timestamp> &rp : req->txn.getReadSet()){
         proto::ReadSet *rsetEntry = reqMsg.add_rset();
 
@@ -90,10 +95,14 @@ LRClient::SendPrepare(uint64_t leader, const PendingPrepare *req){
         rsetEntry->set_readts(rp.second.getTimestamp());
     }
 
+    Debug("22222");
+
     reqMsg.set_primaryshard(req->txn.getPrimaryShard());
     for(auto p : req->txn.getParticipants()){
         reqMsg.add_participants(p);
     }
+
+    Debug("33333");
 
     switch(tpcMode) {
     case TpcMode::MODE_SLOW:
@@ -112,7 +121,7 @@ LRClient::SendPrepare(uint64_t leader, const PendingPrepare *req){
         reqMsg.set_mode(proto::CommitMode::MODE_CAROUSEL);
         break;
     }
- 
+    Debug("44444");
     // in Carousel and RC mode, the prepare need to send to all replicas
     if(tpcMode == TpcMode::MODE_CAROUSEL || tpcMode == TpcMode::MODE_RC){
         if(transport->SendMessageToAll(this, reqMsg)){
@@ -124,6 +133,7 @@ LRClient::SendPrepare(uint64_t leader, const PendingPrepare *req){
         }
         return;
     }
+    Debug("55555");
     // TODO
     // how to known the leader id
     if(transport->SendMessageToReplica(this, leader, reqMsg)){
@@ -133,6 +143,7 @@ LRClient::SendPrepare(uint64_t leader, const PendingPrepare *req){
         pendingReqs.erase(req->txn.getID());
         delete req;
     }
+    Debug("66666");
 }
 
 void
@@ -233,18 +244,18 @@ LRClient::InvokeParallelCommit(
     auto timer = std::unique_ptr<Timeout>(new Timeout(
         transport, 1000,
         [this, tid]() { ParallelModeCommit(tid); }));
-    
+    Debug("aaaaa");
     PendingParallelCommitRequest *req =
     new PendingParallelCommitRequest(tid, participants, 
                                     continuation, error_continuation, 
                                     std::move(timer));
-
+    Debug("bbbbb");
     proto::ParallelModeCommit reqMsg;
     reqMsg.set_tid(tid);
     for(auto p : participants){
         reqMsg.add_participants(p);
     }
-
+    Debug("ccccc");
     if(transport->SendMessageToReplica(this, replica_id, reqMsg)){
         req->timer->Start();
         pendingParallelCommits[tid] = req;
@@ -252,6 +263,7 @@ LRClient::InvokeParallelCommit(
         Warning("Could not send ParallelCommit request to replica");
         delete req;
     }
+    Debug("ddddd");
 }
 
 // TODO, 能够直接放弃吗？
@@ -362,21 +374,23 @@ LRClient::GetDateTimeoutCallback(const uint64_t tid)
 void 
 LRClient::HandleGetDataReply(const TransportAddress &remote,
                         const GetDataReply &msg){
+    Debug("777777");
+    Debug("receive get data reply of txn %lu", msg.tid());
     uint64_t tid = msg.tid();
     auto it = pendingReqs.find(tid);
     if (it == pendingReqs.end()) {
         Debug("Received reply when no request was pending");
         return;
     }
-
+    Debug("8888888888");
     PendingGetDataRequest *req =
         dynamic_cast<PendingGetDataRequest *>(it->second);
-
+    Debug("sbusbusbu");
     // delete timer event
     req->timer->Stop();
     // remove from pending list
     pendingReqs.erase(it);
-
+    Debug("9999999999");
     // invoke application callback
     std::vector<std::pair<string, uint64_t>> readKey;
     std::vector<std::string> values;
@@ -384,10 +398,11 @@ LRClient::HandleGetDataReply(const TransportAddress &remote,
         readKey.push_back(make_pair(key.key(), key.timestamp()));
         values.push_back(key.value());
     }
-
+    Debug("1010100101");
     // TODO
     req->continuation(readKey, values, msg.state());
     delete req;
+    Debug("20202022020");
 }
 
 void

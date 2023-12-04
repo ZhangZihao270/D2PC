@@ -47,6 +47,9 @@ public:
             const std::string &key,
             const Timestamp &timestamp, 
             Promise *promise = NULL);
+    void MultiGet(uint64_t id, 
+            const std::vector<string> &keys, 
+            Promise *promise = NULL);
     void Put(uint64_t id,
 	     const std::string &key,
 	     const std::string &value,

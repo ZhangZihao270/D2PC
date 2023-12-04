@@ -202,6 +202,7 @@ LRReplica::HandlePrepareTxn(const TransportAddress &remote,
     
     string request_str;
     strongstore::proto::Request request;
+    strongstore::proto::Reply reply;
     string res;
     bool replicate = false;
 
@@ -293,6 +294,8 @@ LRReplica::HandlePrepareTxn(const TransportAddress &remote,
         }
 
         if(isLeader){
+            reply.ParseFromString(res);
+
             clientList[msg.tid()] = remote.clone();
             // clientList[msg.tid()] = make_pair(msg.coordinatorshard(), msg.coordiantorid);
 
@@ -300,8 +303,10 @@ LRReplica::HandlePrepareTxn(const TransportAddress &remote,
  
             LogEntry * entry = log.Add(term, txn->getID(), txn->getWriteSet(), 
                                     proto::LogEntryState::LOG_STATE_PREPAREOK, txn->getTimestamp().getTimestamp());
-            
-            InvokeReplicateTxn(entry);
+            if(reply.status() == REPLY_HAS_PRECOMMIT)
+                InvokeReplicateTxn(entry, false);
+            else
+                InvokeReplicateTxn(entry, true);
         }
     }
 }
@@ -310,7 +315,7 @@ LRReplica::HandlePrepareTxn(const TransportAddress &remote,
 // TODO1 ResendTxn
 // Leader adds the txn to be replicated to pendingtxns, sends replicate message to followers
 void 
-LRReplica::InvokeReplicateTxn(const LogEntry *entry){
+LRReplica::InvokeReplicateTxn(const LogEntry *entry, bool canvote){
     txn_id tid = entry->txn;
     lsn id = entry->id;
 
@@ -334,6 +339,8 @@ LRReplica::InvokeReplicateTxn(const LogEntry *entry){
         }
         pendingTxns[tid] = req;
 
+        req->can_vote = canvote;
+
         if(tpcMode != TpcMode::MODE_RC){ // in RC mode, it doesn't need to replicate the transaction log
             ReplicateTxn(req);
         }
@@ -352,6 +359,7 @@ LRReplica::InvokeReplicateTxn(const LogEntry *entry){
             req->majority = replica_config.QuorumSize();
             req->participants = activeTxns[tid]->getParticipants();
             req->primary_shard = activeTxns[tid]->getPrimaryShard();
+            req->can_vote = canvote;
             
             ReplicateTxn(req);
         } else {
@@ -379,7 +387,10 @@ LRReplica::ReplicateTxn(const PendingTransaction *req){
     // replicateTxnMsg.set_commitindex(commit_index);
     replicateTxnMsg.set_term(term);
     replicateTxnMsg.set_replicaid(replica_id);
-    replicateTxnMsg.set_vote(proto::LogEntryState::LOG_STATE_PREPAREOK);
+    if(req->can_vote)
+        replicateTxnMsg.set_vote(proto::LogEntryState::LOG_STATE_PREPAREOK);
+    else 
+        Debug("Txn %lu cannot vote because it is blocked by a precommit txn", req->tid);
 
     //TODO if the number of replicas of a shard and coordinator is the same as the number data centers
     // i.e., each data center has a replica of each shard and coordinator
@@ -484,13 +495,16 @@ LRReplica::HandleReplicateTransaction(const TransportAddress &remote,
         reply_vote.set_tid(msg.txnlog().txnid());
         reply_vote.set_shard(shard_id);
         reply_vote.set_replica(replica_id);
-        reply_vote.set_vote(replication::commit::proto::CommitResult::PREPARED);
         reply_vote.set_primarycoordinator(msg.primarycoordinator());
         reply_vote.set_primaryshard(msg.primaryshard());
+
+        if(msg.vote() == proto::LogEntryState::LOG_STATE_PREPAREOK){
+            reply_vote.set_vote(replication::commit::proto::CommitResult::PREPARED);
+        }
+
         for(auto p : msg.participants()){
             reply_vote.add_participants(p);
         }
-
 
         // replication::commit::proto::ReplicateResult replicateResult;
         // replicateResult.set_tid(msg.txnlog().txnid());
@@ -560,7 +574,7 @@ LRReplica::HandleConsensus(const uint64_t txn_id,
     reqMsg.set_shard(shard_id);
     reqMsg.set_replica(replica_id);
 
-    Debug("Txn %lu reach consensus on shard %lu, reply the the corodinator by replica %lu", txn_id, reqMsg.shard(), reqMsg.replica());
+    Debug("Txn %lu reach consensus on shard %lu, reply the the client by replica %lu", txn_id, reqMsg.shard(), reqMsg.replica());
 
     if(tpcMode == TpcMode::MODE_SLOW){
         int primaryShardLeader = req->primary_shard % replica_config.n;
@@ -584,6 +598,20 @@ LRReplica::HandleConsensus(const uint64_t txn_id,
             }
         }
         return;
+    }
+
+    if(tpcMode == TpcMode::MODE_PARALLEL){
+        auto it = pendingTxns.find(txn_id);
+        if (it == pendingTxns.end()){
+            return;
+        }
+
+        PendingTransaction *req =
+            dynamic_cast<PendingTransaction *>(it->second);
+        ASSERT(req != nullptr);
+
+        if(!req->can_vote)
+            return;
     }
 
     if(tpcMode == TpcMode::MODE_CAROUSEL){
@@ -679,7 +707,7 @@ LRReplica::HandleCommit(const proto::Commit &msg){
     ASSERT(req != nullptr);
 
 
-    if(req->parallel_mode){
+    if(!req->is_participant){
         Debug("The primary shard is not in participants"); 
         pendingTxns.erase(msg.tid());
         delete req;  
@@ -758,6 +786,7 @@ LRReplica::applyToStore(PendingTransaction *req, const proto::Commit &msg){
     req->reach_commit_decision = true;
     string request_str;
     strongstore::proto::Request request;
+    strongstore::proto::Reply reply;
     string res;
 
     request.set_txnid(msg.tid());
@@ -785,6 +814,85 @@ LRReplica::applyToStore(PendingTransaction *req, const proto::Commit &msg){
         break;
     default:
         break;
+    }
+
+    reply.ParseFromString(res);
+
+    if(reply.nexts().size() > 0){
+        std::vector<uint64_t> nexts;
+        for(auto n : reply.nexts())
+            nexts.push_back(n);
+        VoteForNext(nexts);
+    }
+}
+
+// In parallel mode, if a txn is committed and there exists a transaction which reads its updates and is blocked to vote, it will send vote for this transaction.
+void
+LRReplica::VoteForNext(std::vector<uint64_t> nexts){
+    for(uint64_t tid : nexts){
+        auto it = pendingTxns.find(tid);
+        if (it == pendingTxns.end()){
+            return;
+        }
+
+        PendingTransaction *req =
+            dynamic_cast<PendingTransaction *>(it->second);
+        ASSERT(req != nullptr);
+
+        Debug("Send vote of txn %lu on shard %lu to coordinator replicas", tid, shard_id);
+        replication::commit::proto::Vote vote;
+        vote.set_tid(tid);
+        vote.set_vote(replication::commit::proto::CommitResult::PREPARED);
+        vote.set_shard(shard_id);
+        vote.set_primaryshard(req->primary_shard);
+        vote.set_replica(replica_id);
+
+        for(auto p : req->participants){
+            vote.add_participants(p);
+        }
+
+        if(!(coordinator_transport->SendMessageToAll(this, vote))){
+            Warning("Send abort to coordinator replicas failed");
+        }
+
+        if(req->reach_consensus){
+            proto::PrepareTransactionReply reqMsg;
+            reqMsg.set_tid(tid);
+            reqMsg.set_state(proto::LogEntryState::LOG_STATE_PREPAREOK);
+            reqMsg.set_timestamp(activeTxns[tid]->getTimestamp().getTimestamp());
+            reqMsg.set_shard(shard_id);
+            reqMsg.set_replica(replica_id);
+
+            Debug("Txn %lu reach consensus on shard %lu, reply the the client by replica %lu", tid, shard_id, replica_id);
+
+            if(transport->SendMessage(this, *clientList[tid], reqMsg)){
+                Debug("Send prepare ok of %lu success", tid);
+                auto timer = std::unique_ptr<Timeout>(new Timeout(
+                    transport, 1000, [this, tid]() {
+                        ResendPrepareOK(tid);
+                    }
+                ));
+                req->timer = std::move(timer);
+                req->timer->Reset();
+            } else {
+                Warning("Send prepare ok to coordinator failed");
+                pendingTxns.erase(tid);
+                delete req;
+
+
+                Transaction *txn = activeTxns[tid];
+                activeTxns.erase(tid);
+                if(txn != NULL){
+                    delete txn;
+                }
+
+                TransportAddress * addr = clientList[tid];
+                clientList.erase(tid);
+                if(addr != NULL){
+                    delete addr;
+                }
+            }
+        }
     }
 }
 
@@ -901,9 +1009,10 @@ LRReplica::HandleRead(const TransportAddress &remote,
     }
     
     transport->SendMessage(this, remote, reply);
+    Debug("[Shard %lu] send get data reply of txn %lu back", shard_id, msg.tid());
 }
 
-// Receive decision from the closest coordinator replica, end transaction critical early
+// Receive decision from the closest coordinator replica, end concurrency control early
 void 
 LRReplica::HandleDecisionFromCoordinatorReplica(const TransportAddress &remote,
                                     const replication::commit::proto::NotifyDecision &msg){
@@ -967,7 +1076,7 @@ LRReplica::PreCommit(const uint64_t tid){
     store->PreCommitUpcall(request_str, res);
 }
 
-// if primary coordinator notify to replicate result, the final decision is determined, 
+// if correspondent coordinator notify to replicate result, the final decision is determined, 
 // the leader can execute the commit phase
 void 
 LRReplica::HandleReplicateResultFromCoordinatorReplica(const TransportAddress &remote,
@@ -999,6 +1108,7 @@ LRReplica::HandleParallelModeCommit(const TransportAddress &remote,
         PendingTransaction *req = new PendingTransaction(true, replica_config.QuorumSize());
         req->tid = msg.tid();
         req->lsn = -1;
+        req->is_participant = false;
         pendingTxns[msg.tid()] = req; 
 
         Debug("Add txn %lu to pendingTxns list");

@@ -9,8 +9,8 @@
 #include "store/common/truetime.h"
 #include "store/common/frontend/client.h"
 #include "store/strongstore/client.h"
-#include "store/weakstore/client.h"
-#include "store/tapirstore/client.h"
+// #include "store/weakstore/client.h"
+// #include "store/tapirstore/client.h"
 #include <algorithm>
 
 using namespace std;
@@ -207,13 +207,14 @@ main(int argc, char **argv)
         }
     }
 
-    if (mode == MODE_TAPIR) {
-        client = new tapirstore::Client(configPath, nShards,
-                    closestReplica, TrueTime(skew, error));
-    } else if (mode == MODE_WEAK) {
-        client = new weakstore::Client(configPath, nShards,
-                    closestReplica);
-    } else if (mode == MODE_STRONG) {
+    // if (mode == MODE_TAPIR) {
+    //     client = new tapirstore::Client(configPath, nShards,
+    //                 closestReplica, TrueTime(skew, error));
+    // } else if (mode == MODE_WEAK) {
+    //     client = new weakstore::Client(configPath, nShards,
+    //                 closestReplica);
+    // } else 
+    if (mode == MODE_STRONG) {
         client = new strongstore::Client(strongmode, tpcMode, configPath,
                     nShards, closestReplica, nReplicas, TrueTime(skew, error));
     } else {
@@ -310,22 +311,32 @@ main(int argc, char **argv)
         } else {
             // 50% - Get followers/timeline transaction. rand(1,10),0
             int nGets = 1 + rand() % 10;
+            // int nGets = 50;
+
+            vector<string> readkeys;
             for (int i = 0; i < nGets; i++) {
                 keyIdx.push_back(rand_key());
+                readkeys.push_back(keys[keyIdx[i]]);
             }
 
             sort(keyIdx.begin(), keyIdx.end());
-            for (int i = 0; i < nGets && status; i++) {
-                if ((ret = client->Get(keys[keyIdx[i]], value))) {
-                    Warning("Aborting due to %s %d", keys[keyIdx[i]].c_str(), ret);
-                    status = false;
-                }
+            if(ret = client->MultiGet(readkeys, value)){
+                Warning("Aborting due to %s %d", readkeys[0].c_str(), ret);
+                status = false;
             }
+            // for (int i = 0; i < nGets && status; i++) {
+            //     if ((ret = client->Get(keys[keyIdx[i]], value))) {
+            //         Warning("Aborting due to %s %d", keys[keyIdx[i]].c_str(), ret);
+            //         status = false;
+            //     }
+            // }
             ttype = 4;
         }
 
         if (status) {
+            Debug("START COMMIT");
             status = client->Commit();
+            Debug("retries: %d", client->Stats().size());
         } else {
             Debug("Aborting transaction due to failed Read");
         }
@@ -337,6 +348,7 @@ main(int argc, char **argv)
         if (!client->Stats().empty()) {
             retries = client->Stats()[0];
         }
+        Debug("retries: %d", retries);
 
         fprintf(stderr, "%d %ld.%06ld %ld.%06ld %ld %d %d %d", ++nTransactions, t1.tv_sec,
                 t1.tv_usec, t2.tv_sec, t2.tv_usec, latency, status?1:0, ttype, retries);

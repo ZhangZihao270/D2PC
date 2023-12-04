@@ -160,7 +160,7 @@ CoordinatorReplica::HandleReplicateReplyAndVote(const TransportAddress &remote,
                 delete req;
             }
         }
-    } else {
+    } else if (msg.vote() == proto::CommitResult::PREPARED) {
         req->state = proto::CommitResult::ABORT;
         req->reach_consensus = true;
         commitResults[msg.tid()] = new CommitState(proto::CommitResult::ABORT, false);
@@ -673,74 +673,6 @@ CoordinatorReplica::HandleVote(const TransportAddress &remote,
     }
 }
 
-
-// Primary coordinator check if all participant shards have recived replicate reply from a majority.
-// void
-// CoordinatorReplica::HandleReplicateResult(const TransportAddress &remote,
-//                                          const proto::ReplicateResult &msg){
-//     Debug("Receive the replicate result of txn %lu on shard %lu from replica %lu", 
-//             msg.tid(), msg.shard(), msg.replica());
-    
-//     // transaction has already been made the decision.
-//     if(commitResults.find(msg.tid()) != commitResults.end()){
-//         Debug("Transaction %lu has already been made the decision, ignore the request.", msg.tid());
-//         return;
-//     }
-
-//     //TODO 同HandleVote，超时怎么处理
-//     PendingCommit *req = NULL;
-//     auto it = pendingCommits.find(msg.tid());
-//     if(it == pendingCommits.end()){
-//         // auto timer = std::unique_ptr<Timeout>(new Timeout(
-//         //     transport, 2000, [this]() {  }));
-
-//         req = new PendingCommit(quorum_size, msg.tid());
-
-//         // req->primary_shard = msg.primaryshard();
-//         // req->primary_coordinator = coordinator_id;
-//         // for(uint64_t p : msg.participants()){
-//         //     req->participants.push_back(p);
-//         // }
-
-//         pendingCommits[msg.tid()] = req;
-//     } else {
-//         req = dynamic_cast<PendingCommit *>(it->second);
-//     }
-//     ASSERT(req != nullptr);
-
-//     bool already_received = false;
-//     for(auto p : req->replicateResults[msg.shard()]){
-//         if(p.replica() == msg.replica()){
-//             already_received = true;
-//             break;
-//         }
-//     }
-
-//     if(!already_received){
-//         req->replicateResults[msg.shard()].push_back(msg);
-//         if(ReachFaultTolerance(req)){
-//             req->reach_fault_tolerance = true;
-//             if(req->reach_consensus){
-//                 commitResults[msg.tid()] = new CommitState(proto::CommitResult::COMMIT, true);
-//                 NotifyReplicateResult(req);
-
-//                 pendingCommits.erase(msg.tid());
-//                 delete req;
-
-//                 // TransportAddress *addr = primaryShardLeaderList[msg.tid()];
-//                 // primaryShardLeaderList.erase(msg.tid());
-//                 // if(addr != NULL)
-//                 //     delete addr;
-
-//                 // std::vector<TransportAddress*> addrs = closestLeadersList[msg.tid()];
-//                 // closestLeadersList.erase(msg.tid());
-//                 // for(TransportAddress * a : addrs){
-//                 //     delete a;
-//                 // }
-//             }
-//         }
-//     }
-// }
 
 
 }

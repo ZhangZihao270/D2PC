@@ -30,6 +30,7 @@ public:
     // Overriding functions from ::Client
     void Begin();
     int Get(const string &key, string &value);
+    int MultiGet(const std::vector<std::string> &keys, std::string &value);
     int Put(const string &key, const string &value);
     bool Commit();
     void Abort();
@@ -108,6 +109,8 @@ private:
 
     // Time spend sleeping for commit.
     int commit_sleep;
+
+    vector<int> v;
 };
 
 } // namespace strongstore

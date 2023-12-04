@@ -26,6 +26,7 @@
 #define REPLY_NETWORK_FAILURE 5
 #define REPLY_MAX 6
 #define REPLY_ABORT 7
+#define REPLY_HAS_PRECOMMIT 8
 
 enum Mode {
     MODE_UNKNOWN,

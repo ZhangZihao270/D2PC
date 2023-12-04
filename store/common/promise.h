@@ -46,6 +46,7 @@ public:
     // Return configured timeout
     int GetTimeout();
     uint64_t GetTid();
+    void Reset();
 
     // block on this until response comes back
     int GetReply();

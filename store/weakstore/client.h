@@ -28,6 +28,7 @@ public:
     // Overriding methods from ::Client
     void Begin() {};
     int Get(const std::string &key, std::string &value);
+    int MultiGet(const std::vector<std::string> &key, std::string &value);
     int Put(const std::string &key, const std::string &value);
     bool Commit() { return true; };
     void Abort() {};

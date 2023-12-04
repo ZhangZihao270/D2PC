@@ -51,6 +51,37 @@ BufferClient::Get(const string &key, Promise *promise)
     }
 }
 
+void
+BufferClient::MultiGet(const vector<string> &keys, Promise *promise)
+{
+    // for(string key : keys){
+    // // Read your own writes, check the write set first.
+    // if (txn.getWriteSet().find(key) != txn.getWriteSet().end()) {
+    //     promise->Reply(REPLY_OK, (txn.getWriteSet().find(key))->second);
+    //     return;
+    // }
+
+    // // Consistent reads, check the read set.
+    // if (txn.getReadSet().find(key) != txn.getReadSet().end()) {
+    //     // read from the server at same timestamp.
+    //     txnclient->Get(tid, key, (txn.getReadSet().find(key))->second, promise);
+    //     return;
+    // }
+    // }
+    
+    // Otherwise, get latest value from server.
+    Promise p(GET_TIMEOUT);
+    Promise *pp = (promise != NULL) ? promise : &p;
+    // Debug("Receive Get Request");
+    txnclient->MultiGet(tid, keys, pp);
+    if (pp->GetReply() == REPLY_OK) {
+        // Debug("Adding [%s] with ts %lu", key.c_str(), pp->GetTimestamp().getTimestamp());
+        for(auto key : keys){
+            txn.addReadSet(key, pp->GetTimestamp());
+        }
+    }
+}
+
 /* Set value for a key. (Always succeeds).
  * Returns 0 on success, else -1. */
 void

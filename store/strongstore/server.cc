@@ -81,13 +81,14 @@ Server::PrepareUpcall(const string &str1, string &str2, bool &replicate, bool do
     status = store->Prepare(request.txnid(), Transaction(request.prepare().txn()), do_check);
 
     // if prepared, then replicate result
-    if (status == 0) {
+    if (status == REPLY_OK || status == REPLY_HAS_PRECOMMIT) {
         replicate = true;
         // // get a prepare timestamp and send along to replicas
         // if (mode == MODE_SPAN_LOCK || mode == MODE_SPAN_OCC) {
         //     request.mutable_prepare()->set_timestamp(timeServer.GetTime());
         // }
-        request.SerializeToString(&str2);
+        reply.set_status(status);
+        reply.SerializeToString(&str2);
     } else {
         // if abort, don't replicate
         replicate = false;
@@ -104,8 +105,13 @@ Server::CommitUpcall(const string &str1, string &str2){
     
     request.ParseFromString(str1);
      
-    store->Commit(request.txnid(), request.commit().timestamp());
+    std::vector<uint64_t> nexts = store->Commit(request.txnid(), request.commit().timestamp());
     reply.set_status(status);
+
+    for(auto next_txn : nexts){
+        reply.add_nexts(next_txn);
+    }
+
     reply.SerializeToString(&str2);
 }
 
@@ -117,9 +123,14 @@ Server::AbortUpcall(const string &str1, string &str2){
 
     request.ParseFromString(str1);
 
-    store->Abort(request.txnid(), Transaction(request.abort().txn()));
+     std::vector<uint64_t> nexts = store->Abort(request.txnid(), Transaction(request.abort().txn()));
 
     reply.set_status(status);
+    
+    for(auto next_txn : nexts){
+        reply.add_nexts(next_txn);
+    }
+    
     reply.SerializeToString(&str2);
 }
 

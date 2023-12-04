@@ -10,6 +10,7 @@
 #include "store/common/frontend/txnclient.h"
 
 #include <unordered_map>
+#include <vector>
 
 class BufferClient
 {
@@ -22,6 +23,8 @@ public:
 
     // Get value corresponding to key.
     void Get(const string &key, Promise *promise = NULL);
+
+    void MultiGet(const std::vector<string> &keys, Promise *promise);
 
     // Put value for given key.
     void Put(const string &key, const string &value, Promise *promise = NULL);

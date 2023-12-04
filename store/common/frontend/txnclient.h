@@ -13,7 +13,7 @@
 #define DEFAULT_MULTICAST_TIMEOUT_MS 500
 
 // Timeouts for various operations
-#define GET_TIMEOUT 250
+#define GET_TIMEOUT 1000
 #define GET_RETRIES 3
 // Only used for QWStore
 #define PUT_TIMEOUT 250
@@ -43,6 +43,10 @@ public:
     virtual void Get(uint64_t id,
                      const std::string &key,
                      const Timestamp &timestamp,
+                     Promise *promise = NULL) = 0;
+
+    virtual void MultiGet(uint64_t id,
+                     const std::vector<std::string> &keys,
                      Promise *promise = NULL) = 0;
 
     // Set the value for the given key.

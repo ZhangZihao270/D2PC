@@ -43,13 +43,13 @@ public:
         const Timestamp &timestamp, Timestamp &proposed);
 
     // commit the transaction
-    virtual void Commit(uint64_t id, uint64_t timestamp = 0);
+    virtual std::vector<uint64_t> Commit(uint64_t id, uint64_t timestamp = 0);
 
     // precommit the transaction to end the transaction critical path early
     virtual void PreCommit(uint64_t id);
 
     // abort a running transaction
-    virtual void Abort(uint64_t id, const Transaction &txn = Transaction());
+    virtual std::vector<uint64_t> Abort(uint64_t id, const Transaction &txn = Transaction());
 
     // load keys
     virtual void Load(const std::string &key, const std::string &value,

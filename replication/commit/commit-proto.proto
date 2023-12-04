@@ -68,7 +68,7 @@ message Vote {
     uint64 timestamp = 8;
 }
 
-// participant followers -> primary coordinator
+// participant followers -> correspondent coordinator
 // Unused
 message ReplicateResult {
     uint64 tid = 3;
@@ -78,7 +78,7 @@ message ReplicateResult {
     // uint64 primaryShard = 4;
 }
 
-// coordinator replica -> primary coordinator
+// coordinator replica -> correspondent coordinator
 // Unused
 message NotifyDecisionToPrimary {
     uint64 tid = 2;
@@ -88,7 +88,7 @@ message NotifyDecisionToPrimary {
     uint64 timestamp = 5;
 }
 
-// primary coordinator -> primary shard leader
+// correspondent coordinator -> primary shard leader
 // Unused
 message NotifyReplicateResult {
     uint64 tid = 2;
@@ -96,7 +96,7 @@ message NotifyReplicateResult {
     uint64 timestamp = 3;
 }
 
-// primary shard leader -> primary coordinator
+// primary shard leader -> correspondent coordinator
 message RequestCommitResult {
     uint64 tid = 2;
     repeated uint64 participants = 1;
