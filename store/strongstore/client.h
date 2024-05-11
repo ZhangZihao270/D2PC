@@ -24,7 +24,7 @@ class Client : public ::Client
 {
 public:
     Client(Mode mode, TpcMode tpcMode, string configPath, int nshards,
-            int closestReplica, int n, TrueTime timeServer);
+            int closestReplica, int n, TrueTime timeServer, bool tpcc);
     ~Client();
 
     // Overriding functions from ::Client
@@ -90,6 +90,8 @@ private:
     Mode mode;
 
     TpcMode tpcMode;
+
+    bool tpcc = false;
 
     // Timestamp server shard.
     // replication::vr::VRClient *tss; 

@@ -45,6 +45,7 @@ OCCStore::Get(uint64_t id, const string &key, pair<Timestamp, string> &value, ui
     // Get latest from store
     if (store.get(key, value, dependency)) {
         Debug("[%lu] GET %s %lu", id, key.c_str(), value.first.getTimestamp());
+        // Debug("value: %s", value.second.c_str());
         return REPLY_OK;
     } else {
         Debug("[%lu] GET %s failed", id, key.c_str());
@@ -78,6 +79,11 @@ OCCStore::Prepare(uint64_t id, const Transaction &txn, bool do_check)
     }
 
     bool hasDependency = false;
+
+    Debug("prepared size: %d", prepared.size());
+    for (auto &t : prepared) {
+        Debug("%lu", t.first);
+    }
 
     if(do_check){
         // Do OCC checks.
@@ -127,6 +133,7 @@ OCCStore::Prepare(uint64_t id, const Transaction &txn, bool do_check)
     // Otherwise, prepare this transaction for commit
     prepared[id] = txn;
     Debug("[%lu] PREPARED TO COMMIT", id);
+    Debug("Txn wirteset size: %d", txn.getWriteSet().size());
 
     for (auto &read : txn.getReadSet()) {
         if(store.hasPreCommit(read.first.c_str(), id))
@@ -152,11 +159,13 @@ std::vector<uint64_t>
 OCCStore::Commit(uint64_t id, uint64_t timestamp)
 {
     Debug("[%lu] COMMIT", id);
-    ASSERT(precommitted.find(id) != precommitted.end());
+    std::vector<uint64_t> nexts;
+    if (precommitted.find(id) != precommitted.end()){
+    // ASSERT(precommitted.find(id) != precommitted.end());
 
     Transaction txn = precommitted[id];
 
-    std::vector<uint64_t> nexts;
+    // std::vector<uint64_t> nexts;
 
     Debug("[%lu] Writeset Size: %d", id, txn.getWriteSet().size());
 
@@ -168,11 +177,32 @@ OCCStore::Commit(uint64_t id, uint64_t timestamp)
         if(next_txn > 0)
             nexts.push_back(next_txn); 
     }
+    
 
-    if(precommitted.find(id)!=prepared.end())
+    if(precommitted.find(id)!=precommitted.end())
         precommitted.erase(id);
     
     Debug("Commit, Precommitted size: %d", precommitted.size());
+
+    } else if (prepared.find(id)!=prepared.end()){
+        Transaction txn = prepared[id];
+
+        
+
+        Debug("[%lu] Writeset Size: %d", id, txn.getWriteSet().size());
+
+        for (auto &write : txn.getWriteSet()) {
+            store.put(write.first, // key
+                        write.second, // value
+                        Timestamp(timestamp)); // timestamp
+            uint64_t next_txn = store.commit(write.first, id);
+            if(next_txn > 0)
+                nexts.push_back(next_txn); 
+        }
+
+        prepared.erase(id);
+        Debug("Commit, Prepared size: %d", prepared.size());
+    }
 
     return nexts;
 }

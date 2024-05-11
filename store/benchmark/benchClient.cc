@@ -241,7 +241,7 @@ main(int argc, char **argv)
     // } else 
     if (mode == MODE_STRONG) {
         client = new strongstore::Client(strongmode, tpcMode, configPath,
-                    nShards, closestReplica, nReplicas, TrueTime(skew, error));
+                    nShards, closestReplica, nReplicas, TrueTime(skew, error), false);
     } else {
         fprintf(stderr, "option -m is required\n");
         exit(0);
@@ -287,6 +287,8 @@ main(int argc, char **argv)
         beginCount++;
         beginLatency += ((t1.tv_sec - t4.tv_sec)*1000000 + (t1.tv_usec - t4.tv_usec));
         
+        Debug("transaction len: %lu", tLen);
+        Debug("write per: %lu", wPer);
         std::vector<string> rset, wset;
         for (int j = 0; j < tLen; j++) {
             key = keys[rand_key()];
@@ -300,32 +302,33 @@ main(int argc, char **argv)
                 putCount++;
                 putLatency += ((t4.tv_sec - t3.tv_sec)*1000000 + (t4.tv_usec - t3.tv_usec));
             } else {
-                // gettimeofday(&t3, NULL);
-                // client->Get(key, value);
-                // gettimeofday(&t4, NULL);
+                gettimeofday(&t3, NULL);
+                client->Get(key, value);
+                gettimeofday(&t4, NULL);
                 rset.push_back(key);
 
                 getCount++;
-                // getLatency += ((t4.tv_sec - t3.tv_sec)*1000000 + (t4.tv_usec - t3.tv_usec));
+                getLatency += ((t4.tv_sec - t3.tv_sec)*1000000 + (t4.tv_usec - t3.tv_usec));
             }
         }
 
         bool status = true;
 
         if(rset.size() == tLen){ // Read-only transaction
-            gettimeofday(&t3, NULL);
-            // status = client->RoCommit(rset);
-            gettimeofday(&t4, NULL);
+            // gettimeofday(&t3, NULL);
+            // // status = client->RoCommit(rset);
+            // gettimeofday(&t4, NULL);
+            gettimeofday(&t2, NULL);
 
-            getLatency += ((t4.tv_sec - t3.tv_sec)*1000000 + (t4.tv_usec - t3.tv_usec));
+            // getLatency += ((t4.tv_sec - t3.tv_sec)*1000000 + (t4.tv_usec - t3.tv_usec));
         } else {
-            for(auto k : rset){
-                gettimeofday(&t3, NULL);
-                client->Get(key, value);
-                gettimeofday(&t4, NULL);
+            // for(auto k : rset){
+            //     gettimeofday(&t3, NULL);
+            //     client->Get(key, value);
+            //     gettimeofday(&t4, NULL);
 
-                getLatency += ((t4.tv_sec - t3.tv_sec)*1000000 + (t4.tv_usec - t3.tv_usec));
-            }
+            //     getLatency += ((t4.tv_sec - t3.tv_sec)*1000000 + (t4.tv_usec - t3.tv_usec));
+            // }
 
             gettimeofday(&t3, NULL);
             status = client->Commit();
@@ -358,12 +361,12 @@ main(int argc, char **argv)
             break;
     }
 
-    fprintf(stderr, "# Commit_Ratio: %lf\n", (double)tCount/nTransactions);
-    fprintf(stderr, "# Overall_Latency: %lf\n", tLatency/tCount);
-    fprintf(stderr, "# Begin: %d, %lf\n", beginCount, beginLatency/beginCount);
-    fprintf(stderr, "# Get: %d, %lf\n", getCount, getLatency/getCount);
-    fprintf(stderr, "# Put: %d, %lf\n", putCount, putLatency/putCount);
-    fprintf(stderr, "# Commit: %d, %lf\n", commitCount, commitLatency/commitCount);
+    // fprintf(stderr, "# Commit_Ratio: %lf\n", (double)tCount/nTransactions);
+    // fprintf(stderr, "# Overall_Latency: %lf\n", tLatency/tCount);
+    // fprintf(stderr, "# Begin: %d, %lf\n", beginCount, beginLatency/beginCount);
+    // fprintf(stderr, "# Get: %d, %lf\n", getCount, getLatency/getCount);
+    // fprintf(stderr, "# Put: %d, %lf\n", putCount, putLatency/putCount);
+    // fprintf(stderr, "# Commit: %d, %lf\n", commitCount, commitLatency/commitCount);
     
     return 0;
 }

@@ -1,14 +1,17 @@
 
 
 #include "store/strongstore/client.h"
+#include <nlohmann/json.hpp>
 
 using namespace std;
+
+using json = nlohmann::json;
 
 namespace strongstore {
 
 Client::Client(Mode mode, TpcMode tpcMode, string configPath, int nShards,
-                int closestReplica, int n, TrueTime timeServer)
-    : transport(0.0, 0.0, 0), mode(mode), tpcMode(tpcMode), close_replica(closestReplica), nreplicas(n), timeServer(timeServer)
+                int closestReplica, int n, TrueTime timeServer, bool tpcc)
+    : transport(0.0, 0.0, 0), mode(mode), tpcMode(tpcMode), close_replica(closestReplica), nreplicas(n), timeServer(timeServer), tpcc(tpcc)
 {
     // Initialize all state here;
     client_id = 0;
@@ -85,8 +88,15 @@ Client::Begin()
 int
 Client::Get(const string &key, string &value)
 {
+    // Debug("client read");
     // Contact the appropriate shard to get the value.
-    int i = key_to_shard(key, nshards);
+    int i;
+    if(tpcc){
+        // Debug("tpcc, key: %s", key.c_str());
+        i = key_to_shard(key, 0);
+    } else {
+        i = key_to_shard(key, nshards);
+    }
 
     // If needed, add this shard to set of participants and send BEGIN.
     // if (participants.find(i) == participants.end()) {
@@ -115,7 +125,13 @@ Client::MultiGet(const std::vector<std::string> &keys, std::string &value)
     vector<vector<string>> key_shards(nshards, vector<string>());
     // Contact the appropriate shard to get the value.
     for(string k : keys){
-        int i = key_to_shard(k, nshards);
+        int i;
+        if(tpcc){
+            i = key_to_shard(k, 0);
+        } else {
+            i = key_to_shard(k, nshards);
+        }
+        // int i = key_to_shard(k, nshards);
         key_shards[i].push_back(k);
 
         if(std::find(participants.begin(), participants.end(), i) == participants.end()){
@@ -153,7 +169,14 @@ int
 Client::Put(const string &key, const string &value)
 {
     // Contact the appropriate shard to set the value.
-    int i = key_to_shard(key, nshards);
+    int i;
+    if(tpcc){
+        i = key_to_shard(key, 0);
+    } else {
+        i = key_to_shard(key, nshards);
+    }
+
+    Debug("put %s to shard %d", key.c_str(), i);
 
     // If needed, add this shard to set of participants and send BEGIN.
     // if (participants.find(i) == participants.end()) {
@@ -202,11 +225,16 @@ Client::Prepare(uint64_t &ts)
             }
         }
     }
+    Debug("%lu primary shard %d", t_id, primaryShard);
 
     Promise * promise = new Promise(t_id, participants, PREPARE_TIMEOUT);
 
     if(tpcMode == TpcMode::MODE_SLOW || tpcMode == TpcMode::MODE_RC){
         bclient[primaryShard]->SetParticipants(participants);
+        if(participants.size() == 0)
+        {
+            return 0;
+        }
         // gather the read and write set on all shards, and send to the primary shard leader.
         for(auto p : participants){
             for(auto k : bclient[p]->GetReadSet()){
@@ -222,22 +250,29 @@ Client::Prepare(uint64_t &ts)
     // fast mode and parallel mode
     if(tpcMode == TpcMode::MODE_FAST || tpcMode == TpcMode::MODE_PARALLEL || 
         tpcMode == TpcMode::MODE_CAROUSEL){
+            if(participants.size() == 0){
+                return 0;
+            }
         for (auto p : participants) {
             Debug("Sending prepare to shard [%d]", p);
             bclient[p]->SetParticipants(participants);
             bclient[p]->SetPrimaryShard(primaryShard);
             bclient[p]->Prepare(Timestamp(), promise);
+
             if(p == primaryShard){
                 bclient[primaryShard]->ParallelModeCommit(promise);
             }
+            // else {
+            //     bclient[p]->Prepare(Timestamp(), promise);
+            // }
         }
     }
+
 
     if(primaryIsNotParticipant && tpcMode == TpcMode::MODE_PARALLEL){
         bclient[primaryShard]->SetParticipants(participants);
         bclient[primaryShard]->ParallelModeCommit(promise);
     }
-
 
     // // 2. Wait for reply from all shards. (abort on timeout)
     Debug("Waiting for PREPARE replies");
@@ -261,7 +296,8 @@ Client::Commit()
     for (; retry_num < COMMIT_RETRIES; retry_num++) {
         status = Prepare(ts);
         Debug("Status: %d", status);
-        if (status == REPLY_OK) {
+        if (status == REPLY_OK || status == REPLY_ABORT || status == REPLY_FAIL) {
+            Debug("%d, %d, %d", REPLY_OK, REPLY_ABORT, REPLY_FAIL);
             break;
         }
     }

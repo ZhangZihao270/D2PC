@@ -137,7 +137,7 @@ main(int argc, char **argv)
     // } else 
     if (mode == MODE_STRONG) {
         client = new strongstore::Client(strongmode, tpcMode, configPath,
-                    nShards, closestReplica, nReplicas, TrueTime(0, 0));
+                    nShards, closestReplica, nReplicas, TrueTime(0, 0), false);
     } else {
         fprintf(stderr, "option -m is required\n");
         exit(0);

@@ -11,7 +11,11 @@ CoordinatorReplica::CoordinatorReplica(std::vector<transport::Configuration> con
 {
     nreplicas = coordinator_config.n;
     quorum_size = nreplicas / 2 + 1;
+    Debug("replicas num: %lu", coordinator_config.n);
     Debug("coordinator id: %lu", coordinator_id);
+    // for(auto &r:coordinator_config.replicas){
+    //     Debug("addr: %s, %s", r.host.c_str(), r.port.c_str());
+    // }
     transport->Register(this, coordinator_config, coordinator_id);
     Debug("shards num: %lu", config.size());
     for(int i = 0; i < config.size(); i++){
@@ -482,6 +486,7 @@ CoordinatorReplica::NotifyCommitDecision(PendingCommit *req){
     // notDecToPrimary.set_timestamp(req->timestamp);
 
     Debug("coor id %lu", coordinator_id);
+    Debug("primary shard %lu", req->primary_shard);
 
     // std::vector<TransportAddress*> addrs = closestLeadersList[req->tid];
     // for(TransportAddress* a : addrs){

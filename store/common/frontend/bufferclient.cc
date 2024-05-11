@@ -88,6 +88,7 @@ void
 BufferClient::Put(const string &key, const string &value, Promise *promise)
 {
     // Update the write set.
+    // Debug("Put %lu", key_str());
     txn.addWriteSet(key, value);
     promise->Reply(REPLY_OK);
 }

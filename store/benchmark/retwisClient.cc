@@ -216,7 +216,7 @@ main(int argc, char **argv)
     // } else 
     if (mode == MODE_STRONG) {
         client = new strongstore::Client(strongmode, tpcMode, configPath,
-                    nShards, closestReplica, nReplicas, TrueTime(skew, error));
+                    nShards, closestReplica, nReplicas, TrueTime(skew, error), false);
     } else {
         fprintf(stderr, "option -m is required\n");
         exit(0);
@@ -226,7 +226,7 @@ main(int argc, char **argv)
     string key, value;
     ifstream in;
     in.open(keysPath);
-    Debug("Key path: %s", keysPath);
+    // Debug("Key path: %s", keysPath);
     if (!in) {
         fprintf(stderr, "Could not read keys from: %s\n", keysPath);
         exit(0);
@@ -334,11 +334,11 @@ main(int argc, char **argv)
         }
 
         if (status) {
-            Debug("START COMMIT");
+            // Debug("START COMMIT");
             status = client->Commit();
-            Debug("retries: %d", client->Stats().size());
+            // Debug("retries: %d", client->Stats().size());
         } else {
-            Debug("Aborting transaction due to failed Read");
+            // Debug("Aborting transaction due to failed Read");
         }
         gettimeofday(&t2, NULL);
         

@@ -80,7 +80,8 @@ main(int argc, char **argv)
         shardTransport.push_back(new UDPTransport(0.0, 0.0, 0));
     }
 
-
+    Debug("coor num: %d", coordinatorConfig.n);
+    Debug("index: %lu", index);
     replication::commit::CoordinatorReplica coordinator(config, coordinatorConfig, index,
         shardTransport, &coordinator_transport);
 

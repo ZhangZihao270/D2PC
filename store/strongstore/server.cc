@@ -1,6 +1,7 @@
 
 
 #include "store/strongstore/server.h"
+#include "store/benchmark/config.h"
 
 namespace strongstore {
 
@@ -168,12 +169,14 @@ main(int argc, char **argv)
     // const char *leaderConfigPath = NULL;
     const char *keyPath = NULL;
     int64_t skew = 0, error = 0;
+    // 0 for Retwis, 1 for tpcc
+    int workloadData = -1;
     Mode mode;
     TpcMode tpcMode;
 
     // Parse arguments
     int opt;
-    while ((opt = getopt(argc, argv, "c:i:m:e:s:f:n:S:N:k:t:")) != -1) {
+    while ((opt = getopt(argc, argv, "c:i:m:e:s:f:n:S:N:k:t:w:")) != -1) {
         switch (opt) {
         case 'c':
             configPath = optarg;
@@ -235,6 +238,17 @@ main(int argc, char **argv)
             if ((*optarg == '\0') || (*strtolPtr != '\0'))
             {
                 fprintf(stderr, "option -k requires a numeric arg\n");
+            }
+            break;
+        }
+        
+        case 'w':
+        {
+            char *strtolPtr;
+            workloadData = strtoul(optarg, &strtolPtr, 10);
+            if ((*optarg == '\0') || (*strtolPtr != '\0'))
+            {
+                fprintf(stderr, "option -w requires a numeric arg\n");
             }
             break;
         }
@@ -363,8 +377,14 @@ main(int argc, char **argv)
     replication::lr::LRReplica replica(shardConfig, config, coordinatorConfig, index, 
                     (myShard % config.n), myShard, maxShard, shardTransport, &transport, 
                     &coordinator_transport, &server, mode, tpcMode);
+    Debug("index: %lu", index);
+    Debug("config num: %d", config.n);
+    Debug("coor num: %d", coordinatorConfig.n);
     Debug("Number of shards: %d, myShard: %d", maxShard, myShard);
-    if (keyPath) {
+
+    // Debug("workload: %d", workloadData);
+    if(workloadData == 0){
+        if (keyPath) {
         string key;
         std::ifstream in;
         in.open(keyPath);
@@ -389,6 +409,37 @@ main(int argc, char **argv)
             }
         }
         in.close();
+        }
+    } 
+    else if (workloadData == 1){
+        int s = myShard * ware_per_shard;
+        for (int i = 1; i <= ware_per_shard; i++){
+        if (keyPath) {
+            std::string key_path = keyPath + std::to_string(s + i);
+            Debug("Key path: %s", key_path.c_str());
+            // keyPath = keyPath + std::to_string(myShard);
+            Debug("myShard: %d", myShard);
+            std::ifstream in;
+            in.open(key_path);
+            
+            if (!in) {
+                fprintf(stderr, "Could not read keys from: %s\n", keyPath);
+                exit(0);
+            }
+
+            std::string key, value;
+
+            while(true){
+                if (!std::getline(in, key)) break;
+                if (!std::getline(in, value)) break;
+
+                server.Load(key, value, Timestamp());
+            }
+
+            in.close();
+            Debug("load finished.");
+        }
+        }
     }
 
     transport.Run();

@@ -16,31 +16,37 @@ trap '{
 }' INT
 
 # Paths to source code and logfiles.
-srcdir="/root/tapir-commit"
-logdir="/root/tapir-log"
+srcdir="/root/D2PC"
+logdir="/root/log"
 
 # Machines on which replicas are running.
-replicas=("101.37.254.179" "47.251.13.26" "47.254.130.107")
+replicas=("47.99.136.66" "47.89.249.0" "8.209.111.83")
 
 # Machines on which clients are running.
-clients=("101.37.254.179")
+clients=("121.199.75.14" "47.251.49.252" "8.211.5.151")
+#clients=("121.199.75.14")
 
-client="retwisClient"    # Which client (benchClient, retwisClient, etc)
+#client="retwisClient"
+client="benchClient"    # Which client (benchClient, retwisClient, etc)
 store="strongstore"      # Which store (strongstore, weakstore, tapirstore)
-mode="txn-l"            # Mode for storage system.
+mode="occ"            # Mode for storage system.
 tpcmode="parallel"      # Mode for commit algorithm (fast/slow/parellel)
+workloaddata=0
+keypath="/root/D2PC/store/tools/keys"
+#keypath="/root/D2PC/store/tools/tpcc_data"
 
-nshard=1     # number of shards
+nshard=3     # number of shards
 nreplica=3   # number of replicas
-nclient=1    # number of clients to run (per machine)
+nclient=50   # number of clients to run (per machine)
 nkeys=5000000 # number of keys to use
-rtime=10     # duration to run
+rtime=20     # duration to run
+disratio=0.3
 
-tlen=2       # transaction length
-wper=0       # writes percentage
+tlen=10       # transaction length
+wper=100       # writes percentage
 err=0        # error
 skew=0       # skew
-zalpha=-1    # zipf alpha (-1 to disable zipf and enable uniform)
+zalpha=0.6    # zipf alpha (-1 to disable zipf and enable uniform)
 
 # Print out configuration being used.
 echo "Configuration:"
@@ -73,16 +79,16 @@ for ((i=0; i<$nshard; i++))
 do
   echo "Starting shard$i replicas.."
   $srcdir/store/tools/start_replica.sh shard$i $srcdir/store/tools/shard$i.config \
-    "$srcdir/store/$store/server -m $mode -t $tpcmode -n $nshard -N $nreplica\
-    -f $srcdir/store/tools/keys -k $nkeys -e $err -s $skew" $logdir
+    "$srcdir/store/$store/server -m $mode -t $tpcmode -S $nshard -n $i -N $nreplica\
+    -f $keypath -k $nkeys -e $err -s $skew -w $workloaddata" $logdir
 done
 
 echo "Starting coordinator replicas.."
 $srcdir/store/tools/start_replica.sh coordinator $srcdir/store/tools/shard.coor.config \
-  "$srcdir/replication/commit/coordinatorserver" $logdir
+  "$srcdir/replication/commit/coorserver -i $i -N $nshard" $logdir
 
 # Wait a bit for all replicas to start up
-sleep 2
+sleep 5
 
 
 # Run the clients
@@ -93,7 +99,7 @@ for host in ${clients[@]}
 do
   ssh $host "$srcdir/store/tools/start_client.sh \"$srcdir/store/benchmark/$client \
   -c $srcdir/store/tools/shard -N $nshard -f $srcdir/store/tools/keys \
-  -d $rtime -r $replica -t $tpcmode -n $nreplica -l $tlen -w $wper -k $nkeys -m $mode -e $err -s $skew -z $zalpha\" \
+  -d $rtime -r $replica -t $tpcmode -n $nreplica -l $tlen -w $wper -k $nkeys -m $mode -e $err -s $skew -z $zalpha -D $disratio\" \
   $count $nclient $logdir"
 
   let replica=$replica+1
@@ -125,3 +131,4 @@ cat $logdir/client.*.log | sort -g -k 3 > $logdir/client.log
 rm -f $logdir/client.*.log
 
 python $srcdir/store/tools/process_logs.py $logdir/client.log $rtime
+

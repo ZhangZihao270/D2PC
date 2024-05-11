@@ -131,6 +131,7 @@ LRReplica::HandlePrepareTxn(const TransportAddress &remote,
         return;
     }
 
+
     auto it = committedTxns.find(msg.tid());
     if(it != committedTxns.end()){
         Debug("Txn %lu already reach final decision %d", msg.tid(), it->second);
@@ -176,11 +177,14 @@ LRReplica::HandlePrepareTxn(const TransportAddress &remote,
         }
     }
 
-    Transaction* txn = NULL;
-    if(activeTxns.find(msg.tid()) == activeTxns.end()){
-        txn = new Transaction(msg.tid(), increaseTs(), replica_id, msg.primaryshard());
-    } else
-        txn = activeTxns[msg.tid()];
+    Transaction* txn = new Transaction(msg.tid(), increaseTs(), replica_id, msg.primaryshard());
+    // Transaction* txn = NULL;
+    // if(activeTxns.find(msg.tid()) == activeTxns.end()){
+    //     txn = new Transaction(msg.tid(), increaseTs(), replica_id, msg.primaryshard());
+    // } else {
+    //     txn = activeTxns[msg.tid()];
+    //     Debug("txn %lu already exists", msg.tid());
+    // }
 
     for(proto::WriteSet wsetEntry : msg.wset()){
         // txn.wset.insert(std::pair<std::string, std::string> (wsetEntry.key(), wsetEntry.value()));
@@ -195,6 +199,7 @@ LRReplica::HandlePrepareTxn(const TransportAddress &remote,
     for(uint64_t p : msg.participants()){
         txn->addParticipant(p);
     }
+
 
     txn->setIn(inDependency[msg.tid()]);
     inDependency.erase(msg.tid());
@@ -217,6 +222,7 @@ LRReplica::HandlePrepareTxn(const TransportAddress &remote,
     } else {
         store->PrepareUpcall(request_str, res, replicate, false);
     }
+
 
     if(!replicate){ // fail the concurrency control on the leader, abort
         proto::PrepareTransactionReply reqMsg;
@@ -300,6 +306,8 @@ LRReplica::HandlePrepareTxn(const TransportAddress &remote,
             // clientList[msg.tid()] = make_pair(msg.coordinatorshard(), msg.coordiantorid);
 
             activeTxns[txn->getID()] = txn;
+
+            Debug("add a new active txn %lu", txn->getID());
  
             LogEntry * entry = log.Add(term, txn->getID(), txn->getWriteSet(), 
                                     proto::LogEntryState::LOG_STATE_PREPAREOK, txn->getTimestamp().getTimestamp());
@@ -463,6 +471,20 @@ LRReplica::HandleReplicateTransaction(const TransportAddress &remote,
 
         entry = log.Find(lsn);
         Transaction * txn = new Transaction(txn_id, entry->ts, msg.replicaid());
+
+        for(proto::WriteSet wsetEntry : msg.txnlog().wset()){
+            // txn.wset.insert(std::pair<std::string, std::string> (wsetEntry.key(), wsetEntry.value()));
+            txn->addWriteSet(wsetEntry.key(), wsetEntry.value());
+        }
+
+        // for(proto::ReadSet rsetEntry : msg.rset()){
+        //     Timestamp ts = Timestamp(rsetEntry.readts(), rsetEntry.replica());
+        //     txn->addReadSet(rsetEntry.key(), ts);
+        // }
+
+        for(uint64_t p : msg.participants()){
+            txn->addParticipant(p);
+        }
 
         activeTxns[txn->getID()] = txn;
 
@@ -748,6 +770,7 @@ LRReplica::HandleCommit(const proto::Commit &msg){
     }
 
     TransportAddress * addr = clientList[msg.tid()];
+    Debug("earse addr of tid: %lu", msg.tid());
     clientList.erase(msg.tid());
     if(addr != NULL){
         delete addr;
@@ -865,6 +888,10 @@ LRReplica::VoteForNext(std::vector<uint64_t> nexts){
 
             Debug("Txn %lu reach consensus on shard %lu, reply the the client by replica %lu", tid, shard_id, replica_id);
 
+            if(clientList.find(tid) == clientList.end()){
+                Debug("Wrong");
+            } else {
+
             if(transport->SendMessage(this, *clientList[tid], reqMsg)){
                 Debug("Send prepare ok of %lu success", tid);
                 auto timer = std::unique_ptr<Timeout>(new Timeout(
@@ -891,6 +918,7 @@ LRReplica::VoteForNext(std::vector<uint64_t> nexts){
                 if(addr != NULL){
                     delete addr;
                 }
+            }
             }
         }
     }
@@ -975,9 +1003,11 @@ LRReplica::HandleRead(const TransportAddress &remote,
         rep.ParseFromString(res);
 
         if(rep.status() == 0){
-            reply.add_keys()->set_key(key);
+            // Debug("success");
+            proto::ReadKeyVersion* key_version = reply.add_keys();
+            key_version->set_key(key);
             
-            reply.add_keys()->set_timestamp(rep.timestamp());
+            key_version->set_timestamp(rep.timestamp());
 
             if(tpcMode == TpcMode::MODE_PARALLEL){
                 if(rep.dependency() > 0){
@@ -986,16 +1016,24 @@ LRReplica::HandleRead(const TransportAddress &remote,
                         unordered_map<string, string> wset = dependent_txn->getWriteSet();
                         if(wset.find(key) != wset.end()){
                             string val = wset[key];
-                            reply.add_keys()->set_value(val);
+                            // string val = rep.value();
+                            // Debug("value: %s", val);
+                            key_version->set_value(val);
                         }
                         dependent_txn->addOut(msg.tid());
                         // TODO 创建txn，更新in
                         inDependency[msg.tid()] ++;
                     }
+                } else {
+                    string val = rep.value();
+                    // Debug("value: %s", val.c_str());
+                    key_version->set_value(val);
                 }
             } else {
-                reply.add_keys()->set_value(rep.value());
+                key_version->set_value(rep.value());
             }
+            // Debug("reply key size: %d", reply.keys().size());
+            // Debug("value in reply: %s", reply.keys()[0].value().c_str());
         } else {
             success = false;
             break;
@@ -1131,6 +1169,7 @@ LRReplica::HandleParallelModeCommit(const TransportAddress &remote,
     }
 }
 
+// received commit from co-coordinator
 // notify the parallel commit result to the client
 void
 LRReplica::HandleParallelCommitResult(uint64_t tid, uint64_t timestamp, proto::LogEntryState res){
@@ -1155,6 +1194,7 @@ LRReplica::HandleParallelCommitResult(uint64_t tid, uint64_t timestamp, proto::L
 
     TransportAddress * addr = clientList[tid];
     if(addr != NULL){
+        Debug("earse addr of tid: %lu", tid);
         clientList.erase(tid);
         delete addr;
     }

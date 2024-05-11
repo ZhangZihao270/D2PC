@@ -51,7 +51,7 @@ VersionedKVStore::get(const string &key, pair<Timestamp, string> &value)
 bool
 VersionedKVStore::get(const string &key, pair<Timestamp, string> &value, uint64_t &tid)
 {
-    Debug("Key size: %lu", store.size());
+    // Debug("Key size: %lu", store.size());
     Debug("Find the key %s", key.c_str());
     // check for existence of key in store
     if (inStore(key)) {
@@ -108,6 +108,7 @@ void
 VersionedKVStore::put(const string &key, const string &value, const Timestamp &t)
 {
     // Key does not exist. Create a list and an entry.
+    // Debug("put key %s, value %s", key.c_str(), value.c_str());
     store[key].insert(VersionedValue(t, value));
 }
 
@@ -143,11 +144,11 @@ VersionedKVStore::commitGet(const string &key, const Timestamp &readTime, const 
 void 
 VersionedKVStore::preCommit(const std::string &key, uint64_t tid){
     // check for existence of key in store
-    if (inStore(key)) {
+    // if (inStore(key)) {
         // Debug("Find the key.");
-        Debug("put into key %s", key);
+        // Debug("put into key %s", key.c_str());
         precommits[key].push_back(tid);
-    }
+    // }
 }
 
 /*
@@ -158,14 +159,14 @@ VersionedKVStore::commit(const std::string &key, uint64_t tid){
     if (inStore(key)) {
         // Debug("Find the key.");
         std::vector<uint64_t>::iterator it;
-        Debug("Check if has precommit txns");
+        // Debug("Check if has precommit txns");
         if(precommits.find(key) != precommits.end()){
-            Debug("Precommit num: %lu", precommits[key].size());
+            // Debug("Key: %s, Precommit num: %lu", key.c_str(), precommits[key].size());
             for(auto it = precommits[key].begin(); it != precommits[key].end();){
                 if(*it == tid){
-                    Debug("Find the precommit txn");
+                    // Debug("Find the precommit txn");
                     it = precommits[key].erase(it);
-                    Debug("Earse it");
+                    // Debug("Earse it");
                     
                 } else {
                     ++it;

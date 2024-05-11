@@ -89,10 +89,11 @@ Promise::Reply(int s, int r, Timestamp t){
     if(r != REPLY_OK){
         fail = true;
         Reply(r);
+        return;
     }
-    preparereplies[s] = r;
     if(timestamp < t)
         timestamp = t;
+
     if(preparereplies.size() == participantNumber){
         lock_guard<mutex> l(lock);
         done = true;

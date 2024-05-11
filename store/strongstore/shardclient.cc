@@ -61,7 +61,7 @@ ShardClient::Get(uint64_t id, const std::string &key, Promise *promise)
 {
     // Send the GET operation to appropriate shard.
     Debug("[shard %i] Sending GET [%s] of %lu to replica %lu", shard, key.c_str(), id, replica);
-    Debug("Promise txn id %lu", promise->GetTid());
+    // Debug("Promise txn id %lu", promise->GetTid());
     // // create request
     // string request_str;
     // Request request;
@@ -197,6 +197,7 @@ ShardClient::Prepare(uint64_t id, const Transaction &txn,
                                 this,
                                 placeholders::_1));
     });
+    Debug("Send Prepare done");
 }
 
 void 
@@ -246,6 +247,7 @@ ShardClient::Commit(uint64_t id, const Transaction &txn,
 {
 
     Debug("[shard %i] Sending COMMIT: %lu", shard, id);
+    waiting = NULL;
     client->InvokeCommit(id, leader, replication::lr::proto::LogEntryState::LOG_STATE_COMMIT, nullptr);
 
     // blockingBegin = new Promise(COMMIT_TIMEOUT);
@@ -292,7 +294,7 @@ void
 ShardClient::Abort(uint64_t id, const Transaction &txn, Promise *promise)
 {
     Debug("[shard %i] Sending ABORT: %lu", shard, id);
-
+    waiting = NULL;
     client->InvokeCommit(id, leader, replication::lr::proto::LogEntryState::LOG_STATE_ABORT, nullptr);
     
     // create abort request
@@ -333,11 +335,17 @@ ShardClient::GetCallback(std::vector<std::pair<string, uint64_t>> readKey, std::
         Promise *w = waiting;
         waiting = NULL;
         Debug("[shard %i] Received GET callback [%d] of txn %lu", shard, state, w->GetTid());
+        if(!values.empty()){
+        // Debug("Value: %s", values[0].c_str());
         // std::vector<Timestamp> t;
         // for(auto key : readKey){
         //     t.push_back(Timestamp(key.second));
         // }
         w->Reply(state, readKey[0].second, values[0]);
+        }else{
+            Debug("No return values");
+            w->Reply(state, Timestamp(), "");
+        }
     }
 }
 // void
@@ -402,6 +410,10 @@ ShardClient::PrepareTimeout(uint64_t tid)
     if(waiting != NULL){
         Debug("Waiting tid %lu", waiting->GetTid());
     }
+    Debug("[shard %i] Prepare timeout", shard);
+    Debug("tid: %lu", tid);
+    if(waiting != NULL)
+        Debug("waiting: %lu", waiting->GetTid());
 
     if (waiting != NULL && waiting->GetTid() == tid) {
         Promise *w = waiting;
@@ -417,10 +429,11 @@ ShardClient::ParallelModeCommitCallback(const uint64_t tid, int state, uint64_t 
     if(waiting != NULL){
         Debug("Waiting tid %lu", waiting->GetTid());
     } else {
-        Debug("Waiting tid %lu is NULL", waiting->GetTid());
+        Debug("Waiting tid %lu is NULL", tid);
     }
 
     if (waiting != NULL && waiting->GetTid() == tid) {
+        Debug("set waiting as null for %lu", tid);
         Promise *w = waiting;
         waiting = NULL;
         // w->Reply(state, Timestamp(), true);

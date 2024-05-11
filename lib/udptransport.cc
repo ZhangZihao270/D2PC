@@ -21,7 +21,7 @@
 #include <netdb.h>
 #include <signal.h>
 
-const size_t MAX_UDP_MESSAGE_SIZE = 9000; // XXX
+const size_t MAX_UDP_MESSAGE_SIZE = 15000; // XXX
 const int SOCKET_BUF_SIZE = 10485760;
 
 using std::pair;
@@ -397,6 +397,8 @@ UDPTransport::SendMessageInternal(TransportReceiver *src,
     char *buf = unique_buf.get();
 
     int fd = fds[src];
+
+    Debug("msg size: %lu", msgLen);
 
     // XXX All of this assumes that the socket is going to be
     // available for writing, which since it's a UDP socket it ought
