@@ -50,21 +50,18 @@ int
 LockStore::Get(uint64_t id, const string &key, pair<Timestamp, string> &value, uint64_t &dependency)
 {
     Debug("[%lu] GET %s", id, key.c_str());
-    // string val;
-    // std::pair<Timestamp, std::string> val;
 
-    if (!store.get(key, value, dependency)) {
+    if (store.get(key, value, dependency)) {
         // couldn't find the key
-        return REPLY_FAIL;
-    }
-
-    // grab the lock (ok, if we already have it)
-    if (locks.lockForRead(key, id)) {
-        // value = make_pair(Timestamp(), val);
+        if (dependency > 0){
+            Debug("[%lu] read depend on [%lu]", dependency);
+        }
+        Debug("[%lu] GET %s %lu", id, key.c_str(), value.first.getTimestamp());
+        // Debug("value: %s", value.second.c_str());
         return REPLY_OK;
     } else {
-        Debug("[%lu] Could not acquire read lock", id);
-        return REPLY_RETRY;
+        Debug("[%lu] GET %s failed", id, key.c_str());
+        return REPLY_FAIL;
     }
 }
 
@@ -105,28 +102,35 @@ LockStore::Prepare(uint64_t id, const Transaction &txn, bool do_check)
     }
 }
 
-std::vector<uint64_t>
+void
 LockStore::Commit(uint64_t id, uint64_t timestamp)
 {
     Debug("[%lu] COMMIT", id);
-    ASSERT(prepared.find(id) != prepared.end());
+    // ASSERT(prepared.find(id) != prepared.end());
 
+    if (precommitted.find(id) != precommitted.end()){
+        Transaction txn = precommitted[id];
 
-    Transaction txn = prepared[id];
+        for (auto &write : txn.getWriteSet()) {
+            store.put(write.first, write.second, timestamp);
+            store.commit(write.first, id);
+        }
 
-    std::vector<uint64_t> nexts;
+        precommitted.erase(id);
+    
+        Debug("Commit, Precommit list size: %d", precommitted.size());
+    } else if (prepared.find(id)!=prepared.end()){
+        Transaction txn = prepared[id];
 
+        for (auto &write : txn.getWriteSet()) {
+            store.put(write.first, write.second, timestamp);
+            store.commit(write.first, id);
+        }
+        // Drop locks.
+        dropLocks(id, txn);
 
-    for (auto &write : txn.getWriteSet()) {
-        store.put(write.first, write.second, timestamp);
-        store.commit(write.first, id);
+        prepared.erase(id);
     }
-    // Drop locks.
-    // dropLocks(id, txn);
-
-    prepared.erase(id);
-
-    return nexts;
 }
 
 // for parallel mode, to release locks and adds tid to each write key's precommit list
@@ -143,23 +147,27 @@ LockStore::PreCommit(uint64_t id){
 
     // Drop locks.
     dropLocks(id, txn);
+    prepared.erase(id);
+    precommitted[id] = txn;
+
+    Debug("PreCommit, Prepared size: %d", prepared.size());
 }
 
-std::vector<uint64_t>
+void
 LockStore::Abort(uint64_t id, const Transaction &txn)
 {
     Debug("[%lu] ABORT", id);
 
-    std::vector<uint64_t> nexts;
-
-    for (auto &write : txn.getWriteSet()) {
-        store.commit(write.first, id);
+    if (precommitted.find(id) != precommitted.end()){
+        Transaction txn = precommitted[id];
+        precommitted.erase(id);
+    } else if (prepared.find(id)!=prepared.end()) {
+        Transaction txn = prepared[id];
+        dropLocks(id, txn);
+        prepared.erase(id);
     }
 
-    dropLocks(id, txn);
-    prepared.erase(id);
-
-    return nexts;
+    // return nexts;
 }
 
 void

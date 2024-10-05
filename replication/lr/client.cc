@@ -176,8 +176,6 @@ LRClient::HandlePrepareTxnReply(const TransportAddress &remote,
     PendingPrepare *req = dynamic_cast<PendingPrepare *>(it->second);
     ASSERT(req != NULL);
 
-    // Debug("Prapre state: %d", msg.state());
-
     // In Carousel mode, client may receive replies from both leader and replicas
     // if replies from replicas form a super quorum, it enters fast path
     // if receive replicate success reply from leader, it enters slow path
@@ -208,7 +206,6 @@ LRClient::HandlePrepareTxnReply(const TransportAddress &remote,
     }
 
     if(!req->continuationInvoked){
-        // TODO
         // if(msg.state() == LogEntryState::LOG_STATE_PREPAREOK){
         if(req->state == LogEntryState::LOG_STATE_PREPAREOK){
             req->continuation(tid, msg.shard(), 0, req->timestamp);
@@ -256,7 +253,7 @@ LRClient::InvokeParallelCommit(
     }
 }
 
-// TODO, 能够直接放弃吗？
+
 void
 LRClient::ParallelModeCommit(const uint64_t tid)
 {

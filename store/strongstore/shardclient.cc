@@ -139,34 +139,6 @@ ShardClient::Get(uint64_t id, const string &key,
     Get(id, key, promise);
 }
 
-//TODO LRClient设计一个获取特定ts上版本的接口
-// void
-// ShardClient::Get(uint64_t id, const string &key,
-//                 const Timestamp &timestamp, Promise *promise)
-// {
-//     // Send the GET operation to appropriate shard.
-//     Debug("[shard %i] Sending GET [%s]", shard, key.c_str());
-
-//     // set to 1 second by default
-//     int timeout = (promise != NULL) ? promise->GetTimeout() : 1000;
-
-//     std::vector<std::string> keys;
-//     keys.push_back(key);
-
-//     transport->Timer(0, [=]() {
-// 	    waiting = promise;
-//         client->InvokeUnlogged(replica,
-//                                 request_str,
-//                                 bind(&ShardClient::GetCallback,
-//                                     this,
-//                                     placeholders::_1,
-//                                     placeholders::_2),
-//                                 bind(&ShardClient::GetTimeout,
-//                                     this),
-//                                 timeout); // timeout in ms
-//         });
-// }
-
 void
 ShardClient::Put(uint64_t id,
                const string &key,
@@ -217,29 +189,7 @@ ShardClient::ParallelModeCommit(uint64_t id, const Transaction &txn, Promise *pr
     });
 }
 
-// void
-// ShardClient::Prepare(uint64_t id, const Transaction &txn,
-//                     const Timestamp &timestamp, Promise *promise)
-// {
-//     Debug("[shard %i] Sending PREPARE: %lu", shard, id);
 
-//     // create prepare request
-//     string request_str;
-//     Request request;
-//     request.set_op(Request::PREPARE);
-//     request.set_txnid(id);
-//     txn.serialize(request.mutable_prepare()->mutable_txn());
-//     request.SerializeToString(&request_str);
-
-//     transport->Timer(0, [=]() {
-// 	    waiting = promise;
-//             client->Invoke(request_str,
-//                            bind(&ShardClient::PrepareCallback,
-//                                 this,
-//                                 placeholders::_1,
-//                                 placeholders::_2));
-//         });
-// }
 
 void
 ShardClient::Commit(uint64_t id, const Transaction &txn,
@@ -249,45 +199,7 @@ ShardClient::Commit(uint64_t id, const Transaction &txn,
     Debug("[shard %i] Sending COMMIT: %lu", shard, id);
     waiting = NULL;
     client->InvokeCommit(id, leader, replication::lr::proto::LogEntryState::LOG_STATE_COMMIT, nullptr);
-
-    // blockingBegin = new Promise(COMMIT_TIMEOUT);
-    // transport->Timer(0, [=]() {
-    //     waiting = promise;
-
-    //     client->Invoke(request_str,
-    //         bind(&ShardClient::CommitCallback,
-    //             this,
-    //             placeholders::_1,
-    //             placeholders::_2));
-    // });
 }
-
-// void
-// ShardClient::Commit(uint64_t id, const Transaction &txn,
-//                    uint64_t timestamp, Promise *promise)
-// {
-
-//     Debug("[shard %i] Sending COMMIT: %lu", shard, id);
-
-//     // create commit request
-//     string request_str;
-//     Request request;
-//     request.set_op(Request::COMMIT);
-//     request.set_txnid(id);
-//     request.mutable_commit()->set_timestamp(timestamp);
-//     request.SerializeToString(&request_str);
-
-//     blockingBegin = new Promise(COMMIT_TIMEOUT);
-//     transport->Timer(0, [=]() {
-//         waiting = promise;
-
-//         client->Invoke(request_str,
-//             bind(&ShardClient::CommitCallback,
-//                 this,
-//                 placeholders::_1,
-//                 placeholders::_2));
-//     });
-// }
 
 /* Aborts the ongoing transaction. */
 void
@@ -336,12 +248,7 @@ ShardClient::GetCallback(std::vector<std::pair<string, uint64_t>> readKey, std::
         waiting = NULL;
         Debug("[shard %i] Received GET callback [%d] of txn %lu", shard, state, w->GetTid());
         if(!values.empty()){
-        // Debug("Value: %s", values[0].c_str());
-        // std::vector<Timestamp> t;
-        // for(auto key : readKey){
-        //     t.push_back(Timestamp(key.second));
-        // }
-        w->Reply(state, readKey[0].second, values[0]);
+            w->Reply(state, readKey[0].second, values[0]);
         }else{
             Debug("No return values");
             w->Reply(state, Timestamp(), "");

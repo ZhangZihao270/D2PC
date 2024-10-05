@@ -40,6 +40,8 @@ private:
         std::vector<uint64_t> participants;
         // shard_id -> vote of one shard
         std::unordered_map<uint64_t, proto::CommitResult> votes;
+        // shard_id -> does txn have dependencies on this shard?
+        std::unordered_map<uint64_t, bool> dependencies;
         // shard_id -> replicate result
         std::unordered_map<uint64_t, std::vector<proto::BypassLeaderReply>> replicateResults;
         std::unordered_set<uint64_t> commitDecisionReplies;
@@ -91,10 +93,15 @@ private:
     void HandleReplyDecision(const TransportAddress &remote,
                             const proto::ReplyDecision &msg);
 
+    void HandleNotifyDependenciesAreCleared(const TransportAddress &remote,
+                                const proto::NotifyDependenciesAreCleared &msg);
+
     // check if has received votes from all participants, and make the decision
     bool ReachConsensus(PendingCommit *req);
 
     bool ReachFaultTolerance(PendingCommit *req);
+
+    bool AllParticipantsHaveNoPrecommitDependency(PendingCommit *req);
 
     void NotifyCommitDecision(PendingCommit *req);
     void NotifyReplicateResult(PendingCommit *req);

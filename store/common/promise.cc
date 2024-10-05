@@ -91,8 +91,10 @@ Promise::Reply(int s, int r, Timestamp t){
         Reply(r);
         return;
     }
+    preparereplies[s] = r;
     if(timestamp < t)
         timestamp = t;
+    
 
     if(preparereplies.size() == participantNumber){
         lock_guard<mutex> l(lock);
@@ -103,7 +105,6 @@ Promise::Reply(int s, int r, Timestamp t){
 
 void
 Promise::Reply(int r, Timestamp t, bool p){
-    Debug("Reach final decision");
     lock_guard<mutex> l(lock);
     reachFinalDecision = true;
     timestamp = t;

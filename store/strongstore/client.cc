@@ -75,7 +75,6 @@ Client::Begin()
 {
     Debug("BEGIN Transaction");
     t_id++;
-    Debug("txn id: %lu", t_id);
     participants.clear();
     commit_sleep = -1;
     for (int i = 0; i < nshards; i++) {

@@ -51,8 +51,6 @@ VersionedKVStore::get(const string &key, pair<Timestamp, string> &value)
 bool
 VersionedKVStore::get(const string &key, pair<Timestamp, string> &value, uint64_t &tid)
 {
-    // Debug("Key size: %lu", store.size());
-    Debug("Find the key %s", key.c_str());
     // check for existence of key in store
     if (inStore(key)) {
         if(precommits.find(key) == precommits.end() || precommits[key].empty()){
@@ -61,10 +59,10 @@ VersionedKVStore::get(const string &key, pair<Timestamp, string> &value, uint64_
             tid = 0;
         } else {
             tid = precommits[key].back();
+            Debug("Read key %s on PreCommit txn %lu", key.c_str(), tid);
         }
         return true;
     }
-    Debug("the key is not in the store");
     return false;
 }
     
@@ -174,11 +172,11 @@ VersionedKVStore::commit(const std::string &key, uint64_t tid){
             }
         }
 
-        if(!blocked[key].empty()){
-            uint64_t next = blocked[key].front();
-            blocked[key].erase(blocked[key].begin());
-            return next;
-        }
+        // if(!blocked[key].empty()){
+        //     uint64_t next = blocked[key].front();
+        //     blocked[key].erase(blocked[key].begin());
+        //     return next;
+        // }
     }
     return 0;
 }
@@ -220,14 +218,14 @@ VersionedKVStore::getLastRead(const string &key, const Timestamp &t, Timestamp &
 
 
 // check if has precommit txn on the operate key
-bool
-VersionedKVStore::hasPreCommit(const string &key, uint64_t tid){
-    if(precommits[key].empty())
-        return false;
-    else{
-        blocked[key].push_back(tid);
-        Debug("Blocked by %lu", precommits[key][0]);
-        return true;
-    }
-}
+// bool
+// VersionedKVStore::hasPreCommit(const string &key, uint64_t tid){
+//     if(precommits[key].empty())
+//         return false;
+//     else{
+//         blocked[key].push_back(tid);
+//         Debug("Blocked by %lu", precommits[key][0]);
+//         return true;
+//     }
+// }
 

@@ -112,9 +112,8 @@ private:
         bool parallel_mode = false;
 
         bool is_participant = true;
-
-        // if has read uncommit updates, it cannot vote.
-        bool can_vote = false;
+        
+        bool has_precommit = false;
 
         inline PendingTransaction(
             std::unique_ptr<Timeout> timer,
@@ -200,7 +199,10 @@ private:
     void ResendPrepareOK(uint64_t tid);
     void ResendPrepare(uint64_t tid);
 
+    void CascadeAbort(uint64_t tid);
+
     void VoteForNext(std::vector<uint64_t> nexts);
+    void notifyForFollowingDependenies(uint64_t tid);
 
     // Sharding logic: Given key, generates a number b/w 0 to nshards-1
     uint64_t key_to_shard(const std::string &key) {
@@ -248,7 +250,7 @@ private:
     std::unordered_map<txn_id, Transaction *> activeTxns;
     std::unordered_map<txn_id, std::pair<proto::LogEntryState, uint64_t>> committedTxns;
 
-    std::unordered_map<txn_id, uint64_t> inDependency;
+    std::unordered_map<txn_id, int> inDependency;
 
     std::unordered_map<txn_id, TransportAddress*> clientList;
     std::unordered_map<txn_id, TransportAddress*> prepareClientList; // for slow mode

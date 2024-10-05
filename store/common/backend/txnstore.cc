@@ -67,7 +67,7 @@ TxnStore::Prepare(uint64_t id, const Transaction &txn,
     return 0;
 }
 
-std::vector<uint64_t>
+void
 TxnStore::Commit(uint64_t id, uint64_t timestamp)
 {
     Panic("Unimplemented COMMIT");
@@ -79,7 +79,7 @@ TxnStore::PreCommit(uint64_t id)
     Panic("Unimplemented PRE-COMMIT");
 }
 
-std::vector<uint64_t>
+void
 TxnStore::Abort(uint64_t id, const Transaction &txn)
 {
     Panic("Unimplemented ABORT");

@@ -9,7 +9,7 @@ enum CommitResult{
     PREPARED = 3;
 }
 
-// Replica to co-located coordinator, process 3 in Fig.4 in the paper.
+// Replica to co-coordinator, process 3 in Fig.4 in the paper.
 message ReplicateReplyAndVote {
     uint64 tid = 1;
     uint64 shard = 2;
@@ -19,9 +19,10 @@ message ReplicateReplyAndVote {
     uint64 primaryShard = 6;
     uint64 primaryCoordinator = 7;
     uint64 timestamp = 8;
+    bool hasPreCommit = 9;
 }
 
-// Co-located coordinator to correspondent coordinator, process 5 in Fig.4 in the paper.
+// Co-coordinator to correspondent coordinator, process 5 in Fig.4 in the paper.
 message BypassLeaderReply {
     uint64 tid = 1;
     uint64 shard = 2;
@@ -32,6 +33,12 @@ message BypassLeaderReplyUnion {
     uint64 tid = 1;
     repeated uint64 shards = 2;
     uint64 replica = 3;
+}
+
+// Leader -> coorspondent coordinator
+message NotifyDependenciesAreCleared {
+    uint64 tid = 1;
+    uint64 shard = 2;
 }
 
 // coordinator -> co-located shards' leader

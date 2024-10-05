@@ -85,10 +85,11 @@ public:
     void setPrimaryShard(int shard);
 
     void increaseIn(){in++;}
-    void decreaseIn(){in--;}
+    void decreaseIn(){if(in>0) in--;}
     void setIn(uint64_t i){in = i;}
     void addOut(uint64_t tid){out.push_back(tid);}
     const std::vector<uint64_t>& getOut() const{return out;}
+    const uint64_t getIn() {return in;}
 
     
     void addReadSet(const std::string &key, const Timestamp &readTime);

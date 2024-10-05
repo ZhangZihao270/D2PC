@@ -398,7 +398,7 @@ UDPTransport::SendMessageInternal(TransportReceiver *src,
 
     int fd = fds[src];
 
-    Debug("msg size: %lu", msgLen);
+    // Debug("msg size: %lu", msgLen);
 
     // XXX All of this assumes that the socket is going to be
     // available for writing, which since it's a UDP socket it ought

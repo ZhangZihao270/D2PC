@@ -106,12 +106,8 @@ Server::CommitUpcall(const string &str1, string &str2){
     
     request.ParseFromString(str1);
      
-    std::vector<uint64_t> nexts = store->Commit(request.txnid(), request.commit().timestamp());
+    store->Commit(request.txnid(), request.commit().timestamp());
     reply.set_status(status);
-
-    for(auto next_txn : nexts){
-        reply.add_nexts(next_txn);
-    }
 
     reply.SerializeToString(&str2);
 }
@@ -124,13 +120,9 @@ Server::AbortUpcall(const string &str1, string &str2){
 
     request.ParseFromString(str1);
 
-     std::vector<uint64_t> nexts = store->Abort(request.txnid(), Transaction(request.abort().txn()));
+    store->Abort(request.txnid(), Transaction(request.abort().txn()));
 
     reply.set_status(status);
-    
-    for(auto next_txn : nexts){
-        reply.add_nexts(next_txn);
-    }
     
     reply.SerializeToString(&str2);
 }

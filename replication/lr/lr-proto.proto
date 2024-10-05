@@ -71,6 +71,7 @@ message ReplicateTransaction{
     repeated uint64 participants = 6;
     uint64 primaryShard = 7;
     LogEntryState vote = 8;
+    bool hasPreCommit = 9;
 }
 
 message ReplicateTransactionReply{

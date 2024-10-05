@@ -11,16 +11,10 @@ CoordinatorReplica::CoordinatorReplica(std::vector<transport::Configuration> con
 {
     nreplicas = coordinator_config.n;
     quorum_size = nreplicas / 2 + 1;
-    Debug("replicas num: %lu", coordinator_config.n);
-    Debug("coordinator id: %lu", coordinator_id);
-    // for(auto &r:coordinator_config.replicas){
-    //     Debug("addr: %s, %s", r.host.c_str(), r.port.c_str());
-    // }
+
     transport->Register(this, coordinator_config, coordinator_id);
-    Debug("shards num: %lu", config.size());
     for(int i = 0; i < config.size(); i++){
         shardTransport[i]->Register(this, config[i], -1);
-        Debug("Register shard %d transport", i);
     }
 }
 
@@ -32,16 +26,6 @@ CoordinatorReplica::~CoordinatorReplica(){
     for(auto kv : commitResults){
         delete kv.second;
     }
-
-    // for(auto kv : primaryShardLeaderList){
-    //     delete kv.second;
-    // }
-
-    // for(auto list : closestLeadersList){
-    //     for(auto v : list.second){
-    //         delete v;
-    //     }
-    // }
 }
 
 void
@@ -64,6 +48,7 @@ CoordinatorReplica::HandleMessage(const TransportAddress &remote,
     proto::ReplicateDecision replicateDecision;
     proto::ReplyDecision replyDecision;
     proto::BypassLeaderReplyUnion bypassLeaderReplyUnion;
+    proto::NotifyDependenciesAreCleared notifyDependenciesAreCleared;
 
     if(type == replyAndVote.GetTypeName()){
         replyAndVote.ParseFromString(data);
@@ -91,8 +76,10 @@ CoordinatorReplica::HandleMessage(const TransportAddress &remote,
         HandleNotifyDecision(remote, notDecToPrimary);
     } else if (type == replicateResult.GetTypeName()){
         replicateResult.ParseFromString(data);
-        Debug("Receive replicate result from shard %lu replica %lu", replicateResult.shard(),
-        replicateResult.replica());
+    } else if (type == notifyDependenciesAreCleared.GetTypeName()){
+        notifyDependenciesAreCleared.ParseFromString(data);
+        HandleNotifyDependenciesAreCleared(remote, notifyDependenciesAreCleared);
+
     }
     else {
         Panic("Received unexpected message type: %s", type.c_str());
@@ -114,6 +101,7 @@ CoordinatorReplica::HandleReplicateReplyAndVote(const TransportAddress &remote,
         return;
     }
 
+    
     PendingCommit *req = NULL;
     auto it = pendingCommits.find(msg.tid());
     if(it == pendingCommits.end()){
@@ -143,28 +131,32 @@ CoordinatorReplica::HandleReplicateReplyAndVote(const TransportAddress &remote,
             req->timestamp = msg.timestamp();
     }
     ASSERT(req != nullptr);
-
-    Debug("participants number: %lu", req->participants.size());
-
-    // TODO send replicate reply to correspondent coordinator
-
+    
     if(msg.vote() == proto::CommitResult::PREPARED){
         req->votes[msg.shard()] =  msg.vote();
+        req->dependencies[msg.shard()] = msg.hasprecommit();
+
+        if(req->dependencies[msg.shard()])
+            Debug("Txn %lu on shard %lu has precommit dependency", msg.tid(), msg.shard());
+
         if(ReachConsensus(req)){
             req->state = proto::CommitResult::PREPARED;
             req->reach_consensus = true;
 
+            // notify local leaders the precommit decision
             NotifyCommitDecision(req);
 
-            if(req->primary_coordinator == coordinator_id && req->reach_fault_tolerance){
+            if(req->primary_coordinator == coordinator_id && req->reach_fault_tolerance && 
+                AllParticipantsHaveNoPrecommitDependency(req)){
                 commitResults[msg.tid()] = new CommitState(req->state, true);
+
                 NotifyReplicateResult(req);
 
                 pendingCommits.erase(msg.tid());
                 delete req;
             }
         }
-    } else if (msg.vote() == proto::CommitResult::PREPARED) {
+    } else {
         req->state = proto::CommitResult::ABORT;
         req->reach_consensus = true;
         commitResults[msg.tid()] = new CommitState(proto::CommitResult::ABORT, false);
@@ -175,7 +167,6 @@ CoordinatorReplica::HandleReplicateReplyAndVote(const TransportAddress &remote,
         delete req;
 
         return;
-
     }
 
 
@@ -190,20 +181,6 @@ CoordinatorReplica::HandleReplicateReplyAndVote(const TransportAddress &remote,
 
     transport->SendMessageToReplica(this, msg.primarycoordinator(), bypassLeaderReply);
 
-    // req->colocatedReplicateReplies.insert(msg.shard());
-    // if(req->colocatedReplicateReplies.size() == msg.participants().size()){
-    //     proto::BypassLeaderReplyUnion bypassLeaderReplyUnion;
-
-    //     bypassLeaderReplyUnion.set_tid(msg.tid());
-    //     bypassLeaderReplyUnion.set_replica(msg.replica());
-
-    //     for(auto p : msg.participants()){
-    //         bypassLeaderReplyUnion.add_shards(p);
-    //     }
-    //     transport->SendMessageToReplica(this, msg.primarycoordinator(), bypassLeaderReplyUnion);
-    // }
-
-    
 }
 
 void 
@@ -245,7 +222,7 @@ CoordinatorReplica::HandleBypassLeaderReply(const TransportAddress &remote,
         req->replicateResults[msg.shard()].push_back(msg);
         if(ReachFaultTolerance(req)){
             req->reach_fault_tolerance = true;
-            if(req->reach_consensus){
+            if(req->reach_consensus && AllParticipantsHaveNoPrecommitDependency(req)){
                 commitResults[msg.tid()] = new CommitState(proto::CommitResult::COMMIT, true);
                 NotifyReplicateResult(req);
 
@@ -300,7 +277,7 @@ CoordinatorReplica::HandleBypassLeaderReplyUnion(const TransportAddress &remote,
 
         if(ReachFaultTolerance(req)){
             req->reach_fault_tolerance = true;
-            if(req->reach_consensus){
+            if(req->reach_consensus && AllParticipantsHaveNoPrecommitDependency(req)){
                 commitResults[msg.tid()] = new CommitState(proto::CommitResult::COMMIT, true);
                 NotifyReplicateResult(req);
                 pendingCommits.erase(msg.tid());
@@ -309,6 +286,33 @@ CoordinatorReplica::HandleBypassLeaderReplyUnion(const TransportAddress &remote,
             }
         }
     }
+    }
+}
+
+void 
+CoordinatorReplica::HandleNotifyDependenciesAreCleared(const TransportAddress &remote,
+                                const proto::NotifyDependenciesAreCleared &msg)
+{
+    Debug("Receive the notification for txn %lu that its dependencies are cleared on shard %lu", msg.tid(), msg.shard());
+
+    PendingCommit *req = NULL;
+    auto it = pendingCommits.find(msg.tid());
+    if(it == pendingCommits.end()){
+        return;
+    }
+
+    req = dynamic_cast<PendingCommit *>(it->second);
+
+    req->dependencies[msg.shard()] = false;
+
+    if (AllParticipantsHaveNoPrecommitDependency(req) && req->reach_consensus && req->reach_fault_tolerance) {
+        commitResults[msg.tid()] = new CommitState(req->state, true);
+
+        Debug("Commit blocked txn %lu", msg.tid());
+        NotifyReplicateResult(req);
+
+        pendingCommits.erase(msg.tid());
+        delete req;
     }
 }
 
@@ -401,6 +405,29 @@ CoordinatorReplica::ReachConsensus(PendingCommit *req){
     return true;
 }
 
+bool
+CoordinatorReplica::AllParticipantsHaveNoPrecommitDependency(PendingCommit *req){
+    Debug("Check if all participants have no precommit dependency");
+    if(req->dependencies.size() != req->participants.size()){
+        Debug("Dependencies size does not match participants number");
+        return false;
+    }
+
+    for(uint64_t p : req->participants){
+        auto it = req->dependencies.find(p);
+        if(it == req->dependencies.end()){
+            Warning("Dependencies list does not contains participant %lu", p);
+        } else {
+            if(req->dependencies[p] == true){
+                Debug("Participant %lu has dependency", p);
+                return false;
+            }
+        }
+    }
+    Debug("Txn %lu has no precommit dependency", req->tid);
+    return true;
+}
+
 // check if all participants has replicate the transaction to a majority
 bool 
 CoordinatorReplica::ReachFaultTolerance(PendingCommit *req){
@@ -429,7 +456,6 @@ CoordinatorReplica::HandleNotifyDecision(const TransportAddress &remote,
     PendingCommit *req = NULL;
     auto it = pendingCommits.find(msg.tid());
     if(it == pendingCommits.end()){
-        Debug("Has not received the transaction");
         return;
     }
 
@@ -479,28 +505,11 @@ CoordinatorReplica::NotifyCommitDecision(PendingCommit *req){
     reqMsg.set_state(req->state);
     reqMsg.set_timestamp(req->timestamp);
 
-    // proto::NotifyDecisionToPrimary notDecToPrimary;
-    // notDecToPrimary.set_tid(req->tid);
-    // notDecToPrimary.set_state(req->state);
-    // notDecToPrimary.set_primaryshard(req->primary_shard);
-    // notDecToPrimary.set_timestamp(req->timestamp);
-
-    Debug("coor id %lu", coordinator_id);
-    Debug("primary shard %lu", req->primary_shard);
-
-    // std::vector<TransportAddress*> addrs = closestLeadersList[req->tid];
-    // for(TransportAddress* a : addrs){
-    //     if(!(transport->SendMessage(this, *a, reqMsg))){
-    //         Warning("Notify closest leaders the commit decision failed.");
-    //     }
-    // }
 
     // Notify closest participant leaders the decision
     for(auto p : req->participants){
-        Debug("participant id: %lu", p);
         if(p % coordinator_config.n == coordinator_id) {
             Debug("Send decision to shard %lu", p);
-            Debug("shards nnumber %lu", shardTransport.size());
             if(!(shardTransport[(int)p]->SendMessageToReplica(this, coordinator_id, reqMsg))){
                 Warning("Notify closest leaders the commit decision failed.");
             }           
@@ -515,7 +524,7 @@ CoordinatorReplica::NotifyCommitDecision(PendingCommit *req){
 
 
 
-// Correspondent coordinator send commit decision to primary shard leader (the leader co-locates with the client)
+// Correspondent coordinator send commit decision to all shard leaders
 void
 CoordinatorReplica::NotifyReplicateResult(PendingCommit *req){
     Debug("Transaction %lu has reached COMMIT", req->tid);
@@ -623,8 +632,6 @@ CoordinatorReplica::HandleVote(const TransportAddress &remote,
             req->timestamp = msg.timestamp();
     }
     ASSERT(req != nullptr);
-
-    Debug("participants number: %lu", req->participants.size());
 
     // if(msg.shard() == req->primary_shard){
     //     primaryShardLeaderList[msg.tid()] = remote.clone();

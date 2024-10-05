@@ -29,8 +29,8 @@ public:
     int Get(uint64_t id, const std::string &key, const Timestamp &timestamp, 
             std::pair<Timestamp, std::string> &value, uint64_t &dependency);
     int Prepare(uint64_t id, const Transaction &txn, bool do_check);
-    std::vector<uint64_t> Commit(uint64_t id, uint64_t timestamp);
-    std::vector<uint64_t> Abort(uint64_t id, const Transaction &txn = Transaction());
+    void Commit(uint64_t id, uint64_t timestamp);
+    void Abort(uint64_t id, const Transaction &txn = Transaction());
     void Load(const std::string &key, const std::string &value, const Timestamp &timestamp);
     void PreCommit(uint64_t id);
 
